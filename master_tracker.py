@@ -1,5 +1,6 @@
 import asyncio
 import aiohttp
+import xml.etree.ElementTree as ET
 from telegram import Bot, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from urllib.parse import quote
@@ -8,8 +9,11 @@ from urllib.parse import quote
 TELEGRAM_BOT_TOKEN = "8725824554:AAGUsQb3t31UU9QbCbOXAIT3Uzzt5eKDKps"
 TELEGRAM_CHAT_ID = "8980310038"
 
-# Prati ključne izvore i mreže
-ACTIVE_SOURCES = 42
+RSS_FEEDS = [
+    "https://cointelegraph.com/rss",
+    "https://decrypt.co/feed",
+    "https://www.coindesk.com/arc/outboundfeeds/rss/"
+]
 
 CRYPTO_HYPE_KEYWORDS = [
     "sol", "solana", "pump", "token", "coin", "memecoin", "alpha", "gem", "moon", 
@@ -34,34 +38,56 @@ def calculate_hype_score(text: str):
         score += 20
     return min(score, 99)
 
-async def fetch_live_feed():
-    # Korištenje pouzdanog CryptoPanic API-ja za real-time objave i vijesti
-    url = "https://cryptopanic.com/api/v1/posts/?auth_token=free&public=true&kinds=news,media"
+async def fetch_rss_feed(session, feed_url):
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        async with session.get(feed_url, headers=headers, timeout=10) as response:
+            if response.status == 200:
+                content = await response.text()
+                root = ET.fromstring(content)
+                items = []
+                # Podržava standardni RSS i Atom format
+                for item in root.findall(".//item") or root.findall(".//{http://www.w3.org/2005/Atom}entry"):
+                    title = item.find("title")
+                    link = item.find("link")
+                    
+                    title_text = title.text if title is not None else ""
+                    link_text = link.text if link is not None else ""
+                    if not link_text and link is not None:
+                        link_text = link.attrib.get("href", "")
+                    
+                    if title_text and link_text:
+                        items.append({
+                            "id": link_text,
+                            "title": title_text,
+                            "link": link_text
+                        })
+                return items
+    except Exception as e:
+        print(f"Greška kod čitanja RSS-a {feed_url}: {e}")
+    return []
+
+async def scan_all_feeds():
     async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(url, timeout=10) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    new_count = 0
-                    for item in data.get("results", []):
-                        post_id = str(item.get("id"))
-                        title = item.get("title", "")
-                        source = item.get("source", {}).get("title", "Crypto Feed")
-                        url_link = item.get("url", "https://cryptopanic.com")
+        new_count = 0
+        for feed_url in RSS_FEEDS:
+            posts = await fetch_rss_feed(session, feed_url)
+            for post in posts:
+                post_id = post["id"]
+                if post_id and post_id not in SEEN_POSTS:
+                    SEEN_POSTS.add(post_id)
+                    if len(SEEN_POSTS) > 1000:
+                        SEEN_POSTS.pop()
 
-                        if post_id and post_id not in SEEN_POSTS:
-                            SEEN_POSTS.add(post_id)
-                            if len(SEEN_POSTS) > 1000:
-                                SEEN_POSTS.pop()
-
-                            hype_score = calculate_hype_score(title)
-                            await send_telegram_post(title, url_link, source, hype_score)
-                            new_count += 1
-                            await asyncio.sleep(0.3)
-                    return new_count
-        except Exception as e:
-            print(f"Greška u dohvaćanju feeda: {e}")
-    return 0
+                    title = post["title"]
+                    link = post["link"]
+                    source = feed_url.split("/")[2]
+                    hype_score = calculate_hype_score(title)
+                    
+                    await send_telegram_post(title, link, source, hype_score)
+                    new_count += 1
+                    await asyncio.sleep(0.2)
+        return new_count
 
 async def send_telegram_post(title, link, source_name, hype_score):
     short_desc = title[:150] + "..." if len(title) > 150 else title
@@ -74,10 +100,10 @@ async def send_telegram_post(title, link, source_name, hype_score):
     else:
         hype_emoji = "📌"
 
-    message = f"{hype_emoji} **[LIVE RADAR FEED - {hype_score}% HYPE]**\n\n"
+    message = f"{hype_emoji} **[RSS FEED RADAR - {hype_score}% HYPE]**\n\n"
     message += f"👤 **Izvor:** `{source_name}`\n"
     message += f"💬 **Objava:**\n{short_desc}\n\n"
-    message += f"🔗 [Otvori izvor]({link})\n\n"
+    message += f"🔗 [Otvori članak]({link})\n\n"
     message += f"👇 *Brze akcije:*"
 
     keyboard = [
@@ -103,28 +129,27 @@ async def send_telegram_post(title, link, source_name, hype_score):
         print(f"Greska pri slanju: {e}")
 
 async def background_radar_loop():
-    print(f"🚀 Live Feed Radar aktivan!")
+    print(f"🚀 Stabilni RSS Radar aktivan!")
     while True:
         try:
-            await fetch_live_feed()
+            await scan_all_feeds()
         except Exception as e:
             print(f"Greska u petlji: {e}")
-        # Provjerava svakih 15 sekundi
-        await asyncio.sleep(15)
+        await asyncio.sleep(20)
 
 async def cmd_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
         return
-    await update.message.reply_text("🔄 Ručno skeniram live feed...")
-    found = await fetch_live_feed()
+    await update.message.reply_text("🔄 Ručno skeniram RSS izvore...")
+    found = await scan_all_feeds()
     await update.message.reply_text(f"✅ Skeniranje završeno. Pronađeno novih objava: {found}")
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
         return
     msg = (
-        f"📊 **LIVE RADAR STATUS**\n\n"
-        f"• Praćenih izvora: `{ACTIVE_SOURCES}`\n"
+        f"📊 **RSS RADAR STATUS**\n\n"
+        f"• Praćenih portala: `{len(RSS_FEEDS)}`\n"
         f"• Status: `Online & Aktivno`\n"
         f"• Spremljenih objava: `{len(SEEN_POSTS)}`"
     )
