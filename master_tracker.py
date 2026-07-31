@@ -9,7 +9,6 @@ from urllib.parse import quote
 TELEGRAM_BOT_TOKEN = "8725824554:AAGUsQb3t31UU9QbCbOXAIT3Uzzt5eKDKps"
 TELEGRAM_CHAT_ID = "8980310038"
 
-# Svih 50 profila koje pratimo preko stabilnih RSS/Nitter feedova (hvata i retwite i slike)
 ACTIVE_PROFILES = [
     "elonmusk", "realDonaldTrump", "WhiteHouse", "POTUS", "SECGov",
     "federalreserve", "USTreasury", "AccountantForYou", "MarioNawfal",
@@ -46,7 +45,6 @@ def calculate_hype_score(text: str):
     return min(score, 99)
 
 async def fetch_profile_rss(session, username):
-    # Koristimo pouzdane javne RSS izvore za X profile koji prenose i RT-ove i slike
     url = f"https://nitter.poast.org/{username}/rss"
     try:
         async with session.get(url, timeout=10) as response:
@@ -57,12 +55,9 @@ async def fetch_profile_rss(session, username):
                 for item in root.findall(".//item"):
                     title = item.find("title")
                     link = item.find("link")
-                    pub_date = item.find("pubDate")
                     
                     title_text = title.text if title is not None else ""
                     link_text = link.text if link is not None else f"https://twitter.com/{username}"
-                    
-                    # Čistimo link da vodi direktno na X
                     link_text = link_text.replace("nitter.poast.org", "twitter.com").replace("nitter.net", "twitter.com")
                     
                     items.append({
@@ -79,7 +74,6 @@ async def fetch_profile_rss(session, username):
 async def scan_all_profiles():
     async with aiohttp.ClientSession() as session:
         new_count = 0
-        # Prolazimo kroz profile u pozadini
         for username in ACTIVE_PROFILES:
             posts = await fetch_profile_rss(session, username)
             for post in posts:
@@ -92,10 +86,8 @@ async def scan_all_profiles():
                     title = post["title"]
                     source = post["source"]
                     link = post["link"]
-
                     hype_score = calculate_hype_score(title)
                     
-                    # Slanje na Telegram
                     await send_telegram_post(title, link, source, hype_score)
                     new_count += 1
                     await asyncio.sleep(0.2)
@@ -136,7 +128,7 @@ async def send_telegram_post(title, link, source_name, hype_score):
             text=message, 
             parse_mode="Markdown", 
             reply_markup={"inline_keyboard": keyboard},
-            disable_web_page_preview=False # Omogućava prikaz medija/slika ako Telegram povuče preview s linka!
+            disable_web_page_preview=False
         )
     except Exception as e:
         print(f"Greska pri slanju: {e}")
@@ -148,13 +140,12 @@ async def background_radar_loop():
             await scan_all_profiles()
         except Exception as e:
             print(f"Greska u petlji: {e}")
-        await asyncio.sleep(30) # Vrti krug provjere za svih 50 profila
+        await asyncio.sleep(30)
 
-# --- TELEGRAM KOMANDE ---
 async def cmd_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
         return
-    await update.message.reply_text("🔄 Ručno skeniram svih 50 profila (twitovi, RT-ovi, slike)...")
+    await update.message.reply_text("🔄 Ručno skeniram svih 50 profila...")
     found = await scan_all_profiles()
     await update.message.reply_text(f"✅ Skeniranje završeno. Pronađeno novih objava: {found}")
 
@@ -165,7 +156,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📊 **FULL FEED RADAR STATUS**\n\n"
         f"• Praćenih X profila: `{len(ACTIVE_PROFILES)}`\n"
         f"• Vrsta sadržaja: `Sve (Twitovi, Retwitovi, Mediji/Slike)`\n"
-        f"• Spremljenih objava u memoriji: `{len(SEEN_POSTS)}`"
+        f"• Spremljenih objava: `{len(SEEN_POSTS)}`"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
 
@@ -175,15 +166,14 @@ async def main():
     app.add_handler(CommandHandler("scan", cmd_scan))
     app.add_handler(CommandHandler("status", cmd_status))
 
-    await app.initialize()
+    # Prisilno gasimo webhooks i brišemo stare repove prije starta
     await app.bot.delete_webhook(drop_pending_updates=True)
-    await app.start()
-    await app.updater.start_polling(drop_pending_updates=True)
-
+    
+    # Pokrećemo pozadinsku petlju radara
     asyncio.create_task(background_radar_loop())
 
-    stop_event = asyncio.Event()
-    await stop_event.wait()
+    # Pokrećemo polling bez blokiranja glavne petlje
+    await app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     asyncio.run(main())
