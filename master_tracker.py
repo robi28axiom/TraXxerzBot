@@ -164,6 +164,26 @@ def generate_dynamic_token_idea(title: str):
         ticker = extract_smart_ticker(title)
         return f"{ticker} Meta Token", ticker
 
+def extract_tiktok_stats(summary_text):
+    """Pokušava izvući podatke o pregledima i lajkovima ako postoje u RSS opisu (Google News RSS povremeno sadrži dio teksta s metrikama)"""
+    views = "N/D"
+    likes = "N/D"
+    if not summary_text:
+        return views, likes
+    
+    # Traženje brojeva praćenih ključnim riječima (views, likes, plays)
+    text_lower = summary_text.lower()
+    
+    views_match = re.search(r'([\d\.,]+[kmb]?)\s*(?:views|pregleda|plays)', text_lower)
+    if views_match:
+        views = views_match.group(1).upper()
+        
+    likes_match = re.search(r'([\d\.,]+[kmb]?)\s*(?:likes|lajkova)', text_lower)
+    if likes_match:
+        likes = likes_match.group(1).upper()
+        
+    return views, likes
+
 def send_telegram_alert(title, link, score, source_type="TWITTER", account=None, dex_data=None, ca_found=None, media_url=None):
     token_name, ticker = generate_dynamic_token_idea(title)
     search_encoded = quote(ticker)
@@ -226,16 +246,21 @@ def send_telegram_alert(title, link, score, source_type="TWITTER", account=None,
     except Exception as e:
         print(f"Greska pri slanju: {e}")
 
-def send_tiktok_digest(top_entries):
-    if not top_entries:
+def send_tiktok_digest(top_entries_data):
+    if not top_entries_data:
         return
     
     message = "🎵 **[TIKTOK 10-MINUTNI TOP 2 TRENDOVI]**\n\n"
-    for i, entry in enumerate(top_entries, 1):
-        title = entry.get('title', 'Nema naslova')
-        link = entry.get('link', '#')
+    for i, item in enumerate(top_entries_data, 1):
+        title = item['title']
+        link = item['link']
+        views = item['views']
+        likes = item['likes']
         token_name, ticker = generate_dynamic_token_idea(title)
-        message += f"{i}. 📝 {title}\n   🎯 **Ticker:** `${ticker}` | [Izvor]({link})\n\n"
+        
+        message += f"{i}. 📝 {title}\n"
+        message += f"   👁️ **Pregledi:** `{views}` | ❤️ **Lajkovi:** `{likes}`\n"
+        message += f"   🎯 **Ticker:** `${ticker}` | [Izvor]({link})\n\n"
     
     message += "👇 *Nove ideje za meme trendove*"
     
@@ -255,21 +280,31 @@ async def tiktok_radar_task():
     await asyncio.sleep(5)
     while True:
         try:
-            new_entries = []
+            new_entries_data = []
             for tiktok_url in TIKTOK_RSS_URLS:
                 feed = feedparser.parse(tiktok_url)
                 for entry in feed.entries:
                     e_id = entry.get('id', entry.link)
                     if e_id not in SEEN_TIKTOK_ARTICLES:
                         SEEN_TIKTOK_ARTICLES.add(e_id)
-                        new_entries.append(entry)
-                        if len(new_entries) >= 2:
+                        
+                        summary = entry.get('summary', '') + ' ' + entry.get('title', '')
+                        views, likes = extract_tiktok_stats(summary)
+                        
+                        new_entries_data.append({
+                            'title': entry.get('title', 'Nema naslova'),
+                            'link': entry.get('link', '#'),
+                            'views': views,
+                            'likes': likes
+                        })
+                        
+                        if len(new_entries_data) >= 2:
                             break
-                if len(new_entries) >= 2:
+                if len(new_entries_data) >= 2:
                     break
             
-            if new_entries:
-                send_tiktok_digest(new_entries)
+            if new_entries_data:
+                send_tiktok_digest(new_entries_data)
         except Exception as e:
             print(f"Greska u TikTok radaru: {e}")
         
@@ -311,7 +346,7 @@ async def twitter_radar_task():
 
 async def background_radar(application):
     await application.bot.initialize()
-    print("🚀 Sustav pokrenut: Twitter vrti Top 50, TikTok šalje Top 2 svакih 10 minuta...")
+    print("🚀 Sustav pokrenut: Twitter vrti Top 50, TikTok šalje Top 2 sa statistikom svakih 10 minuta...")
     
     asyncio.create_task(twitter_radar_task())
     asyncio.create_task(tiktok_radar_task())
