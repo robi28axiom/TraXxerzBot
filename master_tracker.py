@@ -10,7 +10,7 @@ from urllib.parse import quote
 TELEGRAM_BOT_TOKEN = "8725824554:AAGUsQb3t31UU9QbCbOXAIT3Uzzt5eKDKps"
 TELEGRAM_CHAT_ID = "8980310038"
 
-# TOP 400 PROČIŠĆENIH NAJJAČIH TWITTER PROFILA ZA BRZI RADAR
+# TOP 400 PROČIŠĆENIH NAJJAČIH TWITTER PROFILA ZA RADAR
 TOP_400_TWITTER = [
     # Makroekonomija, Wall Street & Globalne Financije
     "federalreserve", "ecb", "IMFNews", "WorldBank", "TheEconomist", "WSJ", "business", "Bloomberg", 
@@ -87,8 +87,7 @@ NITTER_INSTANCES = [
 ]
 
 TIKTOK_RSS_URLS = [
-    "https://news.google.com/rss/search?q=site:tiktok.com+viral+trend+when:1h&hl=en-US&gl=US&ceid=US:en",
-    "https://news.google.com/rss/search?q=site:tiktok.com+news+drama+when:1h&hl=en-US&gl=US&ceid=US:en"
+    "https://news.google.com/rss/search?q=site:tiktok.com+viral+trend+when:1h&hl=en-US&gl=US&ceid=US:en"
 ]
 
 STOP_WORDS = {
@@ -196,9 +195,9 @@ def send_telegram_alert(title, link, score, source_type="TWITTER", account=None,
     short_desc = title[:90] + "..." if len(title) > 90 else title
     
     if source_type == "TIKTOK":
-        header = "🎵 **[TIKTOK TOP 400 RADAR]**"
+        header = "🎵 **[TIKTOK ULTRA-SPORI RADAR]**"
     else:
-        header = "🐦 **[X / TOP 400 - BLITZ RADAR]**"
+        header = "🐦 **[X / TOP 400 - GLAVNI RADAR]**"
     
     message = f"{header}\n\n"
     if account:
@@ -257,24 +256,29 @@ def send_telegram_alert(title, link, score, source_type="TWITTER", account=None,
 
 async def background_radar(application):
     await application.bot.initialize()
-    print("🚀 Top 400 Blitz Radar pokrenut...")
+    print("🚀 Twitter-fokusirani radar uspješno pokrenut...")
     
+    tiktok_counter = 0
+
     while True:
         try:
-            # 1. TikTok viralne objave (Prag na 100/100)
-            for tiktok_url in TIKTOK_RSS_URLS:
-                feed = feedparser.parse(tiktok_url)
-                for entry in feed.entries:
-                    t_id = entry.get('id', entry.link)
-                    if t_id not in SEEN_ARTICLES:
-                        SEEN_ARTICLES.add(t_id)
-                        cas = find_contract_addresses(entry.title)
-                        ca_found = cas[0] if cas else None
-                        dex_data = await check_dexscreener(ca_found) if ca_found else None
-                        media_url = extract_media_from_entry(entry)
-                        send_telegram_alert(entry.title, entry.link, 100, source_type="TIKTOK", dex_data=dex_data, ca_found=ca_found, media_url=media_url)
+            # 1. TikTok provjera radi se izrazito rijetko (tek svaki 10. krug petlje) i isključivo uz prag 100/100
+            tiktok_counter += 1
+            if tiktok_counter >= 10:
+                tiktok_counter = 0
+                for tiktok_url in TIKTOK_RSS_URLS:
+                    feed = feedparser.parse(tiktok_url)
+                    for entry in feed.entries:
+                        t_id = entry.get('id', entry.link)
+                        if t_id not in SEEN_ARTICLES:
+                            SEEN_ARTICLES.add(t_id)
+                            cas = find_contract_addresses(entry.title)
+                            ca_found = cas[0] if cas else None
+                            dex_data = await check_dexscreener(ca_found) if ca_found else None
+                            media_url = extract_media_from_entry(entry)
+                            send_telegram_alert(entry.title, entry.link, 100, source_type="TIKTOK", dex_data=dex_data, ca_found=ca_found, media_url=media_url)
 
-            # 2. Top 400 Twitter profila - Ultra brza petlja
+            # 2. Glavni fokus: Top 400 Twitter profila s optimalnim tempom
             for account in TOP_400_TWITTER:
                 for instance in NITTER_INSTANCES:
                     try:
@@ -293,12 +297,12 @@ async def background_radar(application):
                             break
                     except Exception:
                         continue
-                await asyncio.sleep(0.15)
+                await asyncio.sleep(2.0)  # Uravnotežena pauza po profilu za stabilan rad Twitter radara
             
         except Exception as e:
             print(f"Greska u glavnoj petlji: {e}")
         
-        await asyncio.sleep(5)
+        await asyncio.sleep(30)
 
 def main():
     from telegram.ext import ApplicationBuilder
