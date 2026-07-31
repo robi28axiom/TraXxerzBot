@@ -1,6 +1,6 @@
 import asyncio
-import re
 import aiohttp
+import xml.etree.ElementTree as ET
 from telegram import Bot, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from urllib.parse import quote
@@ -9,6 +9,7 @@ from urllib.parse import quote
 TELEGRAM_BOT_TOKEN = "8725824554:AAGUsQb3t31UU9QbCbOXAIT3Uzzt5eKDKps"
 TELEGRAM_CHAT_ID = "8980310038"
 
+# Svih 50 profila koje pratimo preko stabilnih RSS/Nitter feedova (hvata i retwite i slike)
 ACTIVE_PROFILES = [
     "elonmusk", "realDonaldTrump", "WhiteHouse", "POTUS", "SECGov",
     "federalreserve", "USTreasury", "AccountantForYou", "MarioNawfal",
@@ -32,24 +33,77 @@ CRYPTO_HYPE_KEYWORDS = [
 SEEN_POSTS = set()
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
-def calculate_hype_score(title: str):
-    t_lower = title.lower()
-    score = 30  # Početna baza za svaku objavu
-    
+def calculate_hype_score(text: str):
+    t_lower = text.lower()
+    score = 30
     matches = 0
     for kw in CRYPTO_HYPE_KEYWORDS:
         if kw in t_lower:
             matches += 1
-            
     score += matches * 15
-    
-    if "$" in title or "%" in title or "ath" in t_lower or "million" in t_lower:
+    if "$" in text or "%" in text or "ath" in t_lower or "million" in t_lower:
         score += 20
-        
     return min(score, 99)
 
-async def send_hype_alert(title, link, source_name, hype_score):
-    short_desc = title[:120] + "..." if len(title) > 120 else title
+async def fetch_profile_rss(session, username):
+    # Koristimo pouzdane javne RSS izvore za X profile koji prenose i RT-ove i slike
+    url = f"https://nitter.poast.org/{username}/rss"
+    try:
+        async with session.get(url, timeout=10) as response:
+            if response.status == 200:
+                content = await response.text()
+                root = ET.fromstring(content)
+                items = []
+                for item in root.findall(".//item"):
+                    title = item.find("title")
+                    link = item.find("link")
+                    pub_date = item.find("pubDate")
+                    
+                    title_text = title.text if title is not None else ""
+                    link_text = link.text if link is not None else f"https://twitter.com/{username}"
+                    
+                    # Čistimo link da vodi direktno na X
+                    link_text = link_text.replace("nitter.poast.org", "twitter.com").replace("nitter.net", "twitter.com")
+                    
+                    items.append({
+                        "id": link_text,
+                        "title": title_text,
+                        "link": link_text,
+                        "source": f"@{username}"
+                    })
+                return items
+    except Exception:
+        pass
+    return []
+
+async def scan_all_profiles():
+    async with aiohttp.ClientSession() as session:
+        new_count = 0
+        # Prolazimo kroz profile u pozadini
+        for username in ACTIVE_PROFILES:
+            posts = await fetch_profile_rss(session, username)
+            for post in posts:
+                post_id = post["id"]
+                if post_id and post_id not in SEEN_POSTS:
+                    SEEN_POSTS.add(post_id)
+                    if len(SEEN_POSTS) > 1000:
+                        SEEN_POSTS.pop()
+
+                    title = post["title"]
+                    source = post["source"]
+                    link = post["link"]
+
+                    hype_score = calculate_hype_score(title)
+                    
+                    # Slanje na Telegram
+                    await send_telegram_post(title, link, source, hype_score)
+                    new_count += 1
+                    await asyncio.sleep(0.2)
+            await asyncio.sleep(0.5)
+        return new_count
+
+async def send_telegram_post(title, link, source_name, hype_score):
+    short_desc = title[:150] + "..." if len(title) > 150 else title
     search_encoded = quote(title[:30])
 
     if hype_score >= 75:
@@ -57,14 +111,13 @@ async def send_hype_alert(title, link, source_name, hype_score):
     elif hype_score >= 50:
         hype_emoji = "⚡"
     else:
-        hype_emoji = "💤"
+        hype_emoji = "📌"
 
-    message = f"{hype_emoji} **[X / HYPE RADAR - {hype_score}% HYPE]**\n\n"
-    message += f"👤 **Izvor:** `{source_name}`\n"
-    message += f"💬 **Objava:** {short_desc}\n"
-    message += f"📈 **Crypto/Hype Procjena:** `{hype_score}%`\n\n"
-    message += f"🔗 [Otvori izvor]({link})\n\n"
-    message += f"👇 *Brze akcije za Token/Ape:*"
+    message = f"{hype_emoji} **[X / 50 PROFILES FEED - {hype_score}% HYPE]**\n\n"
+    message += f"👤 **Profil:** `{source_name}`\n"
+    message += f"💬 **Objava / RT:**\n{short_desc}\n\n"
+    message += f"🔗 [Otvori na X-u]({link})\n\n"
+    message += f"👇 *Brze akcije:*"
 
     keyboard = [
         [
@@ -83,67 +136,36 @@ async def send_hype_alert(title, link, source_name, hype_score):
             text=message, 
             parse_mode="Markdown", 
             reply_markup={"inline_keyboard": keyboard},
-            disable_web_page_preview=True
+            disable_web_page_preview=False # Omogućava prikaz medija/slika ako Telegram povuče preview s linka!
         )
     except Exception as e:
         print(f"Greska pri slanju: {e}")
 
-async def fetch_live_feed():
-    url = "https://cryptopanic.com/api/v1/posts/?auth_token=free&public=true&kinds=news,media"
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(url, timeout=10) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    new_count = 0
-                    for item in data.get("results", []):
-                        post_id = str(item.get("id"))
-                        title = item.get("title", "")
-                        source = item.get("source", {}).get("title", "X Alpha Source")
-                        url_link = item.get("url", "https://twitter.com")
-
-                        if post_id and post_id not in SEEN_POSTS:
-                            SEEN_POSTS.add(post_id)
-                            if len(SEEN_POSTS) > 500:
-                                SEEN_POSTS.pop()
-
-                            # Izračunaj hype postotak za svaku objavu bez obzira na sve
-                            hype_score = calculate_hype_score(title)
-
-                            # ŠALJE SVE - nema preskakanja, čak i ako je 30% ili 40% hype-a
-                            await send_hype_alert(title, url_link, source, hype_score)
-                            new_count += 1
-                            await asyncio.sleep(0.5)
-                    return new_count
-        except Exception as e:
-            print(f"Greška: {e}")
-    return 0
-
 async def background_radar_loop():
-    print(f"🚀 All-In Hype Radar pokrenut (Prikazuje apsolutno sve s postocima)!")
+    print(f"🚀 Full-Profile RSS Radar aktivan (Prati sve twitove, RT-ove i slike)!")
     while True:
         try:
-            await fetch_live_feed()
+            await scan_all_profiles()
         except Exception as e:
             print(f"Greska u petlji: {e}")
-        await asyncio.sleep(15)
+        await asyncio.sleep(30) # Vrti krug provjere za svih 50 profila
 
 # --- TELEGRAM KOMANDE ---
 async def cmd_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
         return
-    await update.message.reply_text("🔄 Skeniram apsolutno sve objave i računam postotke...")
-    found = await fetch_live_feed()
-    await update.message.reply_text(f"✅ Skeniranje završeno. Poslano objava: {found}")
+    await update.message.reply_text("🔄 Ručno skeniram svih 50 profila (twitovi, RT-ovi, slike)...")
+    found = await scan_all_profiles()
+    await update.message.reply_text(f"✅ Skeniranje završeno. Pronađeno novih objava: {found}")
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
         return
     msg = (
-        f"📊 **ALL-IN HYPE STATUS**\n\n"
-        f"• Praćenih profila: `{len(ACTIVE_PROFILES)}`\n"
-        f"• Filteri: `Isključeni (Šalje se 100% objava s postocima)`\n"
-        f"• Spremljenih objava: `{len(SEEN_POSTS)}`"
+        f"📊 **FULL FEED RADAR STATUS**\n\n"
+        f"• Praćenih X profila: `{len(ACTIVE_PROFILES)}`\n"
+        f"• Vrsta sadržaja: `Sve (Twitovi, Retwitovi, Mediji/Slike)`\n"
+        f"• Spremljenih objava u memoriji: `{len(SEEN_POSTS)}`"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
 
