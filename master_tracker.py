@@ -12,13 +12,6 @@ TELEGRAM_CHAT_ID = "8980310038"
 # GLOBALNE POSTAVKE
 CURRENT_THRESHOLD = 40
 
-# Ključni X profili koje pratimo kroz alternativne izvore trendova
-ACTIVE_PROFILES = [
-    "elonmusk", "realDonaldTrump", "WhiteHouse", "POTUS", "SECGov", 
-    "federalreserve", "MarioNawfal", "WatcherGuru", "Ansem", "MustStopMurad", 
-    "blknoiz06", "SolanaLegend", "lookonchain", "bubblemaps", "solana", "phantom"
-]
-
 KNOWN_METAS = {
     "MEME": "MEME", "SOL": "SOL", "COIN": "COIN", "TOKEN": "TOKEN", "PUMP": "PUMP", 
     "ALPHA": "ALPHA", "GEM": "GEM", "MOON": "MOON", "DEX": "DEX", "BULL": "BULL", 
@@ -34,8 +27,7 @@ KNOWN_METAS = {
 }
 
 SEEN_PUMP_TOKENS = set()
-VIRAL_KEYWORDS_CACHE = set(["TRUMP", "ELON", "AI", "FED", "SEC", "CAT", "DOG", "APPLE", "SOL", "ANSEM"])
-
+VIRAL_KEYWORDS_CACHE = set(["TRUMP", "ELON", "AI", "FED", "SEC", "CAT", "DOG", "APPLE", "SOL"])
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
 async def check_dexscreener(token_ca: str):
@@ -57,6 +49,24 @@ async def check_dexscreener(token_ca: str):
         except Exception:
             pass
     return {"status": "not_found"}
+
+async def fetch_twitter_narratives():
+    # Vuče najnovije trendove i spikeove o kojima priča Twitter/kripto scena
+    url = "https://cryptopanic.com/api/v1/posts/?auth_token=free&public=true&kinds=news"
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(url, timeout=10) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    for item in data.get("results", []):
+                        title = item.get("title", "")
+                        words = re.findall(r'\b[A-Za-z]{4,}\b', title)
+                        for w in words:
+                            w_up = w.upper()
+                            if w_up not in {"THIS", "THAT", "WITH", "FROM", "THEY", "WILL"}:
+                                VIRAL_KEYWORDS_CACHE.add(w_up)
+        except Exception:
+            pass
 
 def generate_dynamic_token_idea(title: str):
     t_low = title.lower()
@@ -81,32 +91,14 @@ def generate_dynamic_token_idea(title: str):
                 return f"{w_up} Token", w_up
         return "MEME Token", "MEME"
 
-async def fetch_x_trends_or_news():
-    # Povlačimo kripto i političke trendove s otvorenih izvora (CryptoPanic / GNews alternative) da bot "zna" o čemu se priča
-    url = "https://cryptopanic.com/api/v1/posts/?auth_token=free&public=true&kinds=news"
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(url, timeout=10) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    results = data.get("results", [])
-                    for item in results[:10]:
-                        title = item.get("title", "")
-                        words = re.findall(r'\b[A-Za-z]{4,}\b', title)
-                        for w in words:
-                            if w.upper() not in {"THIS", "THAT", "WITH", "FROM"}:
-                                VIRAL_KEYWORDS_CACHE.add(w.upper())
-        except Exception:
-            pass
-
 async def send_telegram_alert(title, link, dex_data=None, ca_found=None, matched_meta=None):
     token_name, ticker = generate_dynamic_token_idea(title)
     search_encoded = quote(ticker)
     short_desc = title[:90] + "..." if len(title) > 90 else title
     
-    header = "🚀 **[ALPHA RADAR & PUMP.FUN SNIPER]**"
+    header = "🚀 **[PUMP.FUN & X-TREND SNIPER]**"
     if matched_meta:
-        header = f"🔥 **[VIRAL META MATCH: {matched_meta}]**"
+        header = f"🔥 **[VIRAL MATCH: {matched_meta}]**"
 
     message = f"{header}\n\n"
     message += f"📝 **Naziv Tokena:** {title}\n"
@@ -121,7 +113,7 @@ async def send_telegram_alert(title, link, dex_data=None, ca_found=None, matched
     message += f"• **Name:** `{token_name}`\n"
     message += f"• **Ticker:** `${ticker}`\n"
     message += f"• **Description:** `{short_desc}`\n\n"
-    message += f"👇 *Brzi linkovi:*"
+    message += f"👇 *Brzi linkovi:* "
 
     keyboard = [
         [
@@ -140,9 +132,7 @@ async def send_telegram_alert(title, link, dex_data=None, ca_found=None, matched
         print(f"Greska pri slanju: {e}")
 
 async def scan_pump_fun_trending():
-    # Osvježavamo viralne ključne riječi prije skeniranja lanca
-    await fetch_x_trends_or_news()
-
+    await fetch_twitter_narratives()
     url = "https://frontend-api.pump.fun/coins?offset=0&limit=30&sort=created_timestamp&order=DESC"
     async with aiohttp.ClientSession() as session:
         try:
@@ -158,13 +148,10 @@ async def scan_pump_fun_trending():
                         if mint and mint not in SEEN_PUMP_TOKENS:
                             SEEN_PUMP_TOKENS.add(mint)
                             
-                            # Provjeravamo poklapa li se naziv tokena s nekom od viralnih meta riječi s X-a/vijesti
                             combined_text = f"{name} {symbol}".upper()
                             matched_meta = next((kw for kw in VIRAL_KEYWORDS_CACHE if kw in combined_text), None)
 
                             dex_data = await check_dexscreener(mint)
-                            
-                            # Šaljemo obavijest za sve ili posebno naglašavamo ako je viralni match
                             await send_telegram_alert(
                                 title=f"{name} (${symbol})", 
                                 link=f"https://pump.fun/coin/{mint}", 
@@ -176,34 +163,34 @@ async def scan_pump_fun_trending():
                             await asyncio.sleep(0.3)
                     return new_count
         except Exception as e:
-            print(f"API greska: {e}")
+            print(f"Pump API greska: {e}")
     return 0
 
 async def background_radar_loop():
-    print(f"🚀 Hibridni Alpha & On-Chain radar pokrenut!")
+    print(f"🚀 X-Trend & On-Chain radar pokrenut!")
     while True:
         try:
             await scan_pump_fun_trending()
         except Exception as e:
             print(f"Greska u petlji: {e}")
-        await asyncio.sleep(35)
+        await asyncio.sleep(30)
 
 # --- TELEGRAM KOMANDE ---
 async def cmd_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
         return
-    await update.message.reply_text("🔄 Skeniram X trendove i Pump.fun tokene...")
+    await update.message.reply_text("🔄 Skeniram Twitter narrative i Pump.fun...")
     found = await scan_pump_fun_trending()
-    await update.message.reply_text(f"✅ Skeniranje završeno! Obrađeno novih tokena/meta: {found}")
+    await update.message.reply_text(f"✅ Skeniranje završeno! Obrađeno novih stavki: {found}")
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
         return
     msg = (
-        f"📊 **STATUS HIBRIDnog RADARA**\n\n"
-        f"• Aktivnih ključnih riječi (X/News cache): `{len(VIRAL_KEYWORDS_CACHE)}`\n"
-        f"• Praćenje lanca: `Pump.fun & DexScreener Live`\n"
-        f"• Status: `Online i lovi tokene`"
+        f"📊 **STATUS RADARA**\n\n"
+        f"• Twitter/News ključne riječi u memoriji: `{len(VIRAL_KEYWORDS_CACHE)}`\n"
+        f"• Praćenje lanca: `Aktivno`\n"
+        f"• Status: `Online`"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
 
