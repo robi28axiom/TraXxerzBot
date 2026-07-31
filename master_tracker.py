@@ -50,6 +50,9 @@ KNOWN_METAS = {
 }
 
 SEEN_ARTICLES = set()
+SEEN_PUMP_TOKENS = set()
+VIRAL_KEYWORDS_CACHE = set(["TRUMP", "ELON", "AI", "FED", "SEC", "CAT", "DOG", "APPLE"])
+
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
 def find_contract_addresses(text: str):
@@ -112,17 +115,16 @@ def generate_dynamic_token_idea(title: str):
         ticker = extract_smart_ticker(title)
         return f"{ticker} Meta Token", ticker
 
-async def send_telegram_alert(title, link, score, account=None, dex_data=None, ca_found=None, media_url=None):
-    token_name, ticker = generate_dynamic_token_idea(title)
+async def send_telegram_alert(title, link, score, account=None, dex_data=None, ca_found=None, media_url=None, is_pump=False):
+    token_name, ticker = generate_dynamic_token_idea(title) if not is_pump else (title, link)
     search_encoded = quote(ticker)
     short_desc = title[:90] + "..." if len(title) > 90 else title
     
-    header = f"🐦 **[X / TOP RADAR - {CURRENT_THRESHOLD}/100]**"
+    header = "🚀 **[PUMP.FUN / VIRAL META SNIPER]**" if is_pump else f"🐦 **[X / TOP RADAR - {CURRENT_THRESHOLD}/100]**"
     message = f"{header}\n\n"
     if account:
-        message += f"👤 **Izvor:** `@{account}`\n"
-    message += f"📝 **Sadržaj:** {title}\n"
-    message += f"🔥 **Score:** `{score}/100`\n"
+        message += f"👤 **Izvor/Dev:** `{account}`\n"
+    message += f"📝 **Naziv / Sadržaj:** {title}\n"
     message += f"🎯 **Ticker:** `${ticker}`\n"
     
     if ca_found:
@@ -130,10 +132,12 @@ async def send_telegram_alert(title, link, score, account=None, dex_data=None, c
         if dex_data and dex_data["status"] == "found":
             message += f"💧 **Likvidnost:** `${dex_data['liquidity']:,.0f}` | 📊 **Volumen:** `${dex_data['volume']:,.0f}`\n"
 
-    message += f"\n📋 *Predložak za lansiranje:*\n"
-    message += f"• **Name:** `{token_name}`\n"
-    message += f"• **Ticker:** `${ticker}`\n"
-    message += f"• **Description:** `{short_desc}`\n\n"
+    if not is_pump:
+        message += f"\n📋 *Predložak za lansiranje:*\n"
+        message += f"• **Name:** `{token_name}`\n"
+        message += f"• **Ticker:** `${ticker}`\n"
+        message += f"• **Description:** `{short_desc}`\n\n"
+    
     message += f"👇 *Brzi linkovi:*"
 
     keyboard = [
@@ -143,12 +147,12 @@ async def send_telegram_alert(title, link, score, account=None, dex_data=None, c
         ],
         [
             {"text": "📈 DexScreener", "url": f"https://dexscreener.com/search?q={search_encoded}"},
-            {"text": "🔗 Izvor", "url": link}
+            {"text": "🔗 Izvor / Token", "url": link if not is_pump else f"https://pump.fun/coin/{ca_found}"}
         ]
     ]
 
     try:
-        if media_url:
+        if media_url and not is_pump:
             try:
                 await bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=media_url, caption=message, parse_mode="Markdown", reply_markup={"inline_keyboard": keyboard})
                 return
@@ -158,15 +162,55 @@ async def send_telegram_alert(title, link, score, account=None, dex_data=None, c
     except Exception as e:
         print(f"Greska pri slanju: {e}")
 
+async def scan_pump_fun_trending():
+    url = "https://frontend-api.pump.fun/coins?offset=0&limit=20&sort=created_timestamp&order=DESC"
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(url, timeout=10) as response:
+                if response.status == 200:
+                    coins = await response.json()
+                    for coin in coins:
+                        mint = coin.get("mint")
+                        name = coin.get("name", "")
+                        symbol = coin.get("symbol", "")
+                        
+                        if mint and mint not in SEEN_PUMP_TOKENS:
+                            # Provjeri sadrži li token neku od viralnih ključnih riječi dana
+                            combined_text = f"{name} {symbol}".upper()
+                            matched_keyword = any(kw in combined_text for kw in VIRAL_KEYWORDS_CACHE)
+                            
+                            if matched_keyword:
+                                SEEN_PUMP_TOKENS.add(mint)
+                                dex_data = await check_dexscreener(mint)
+                                await send_telegram_alert(
+                                    title=name, 
+                                    link=f"https://pump.fun/coin/{mint}", 
+                                    score=99, 
+                                    account="Pump.fun (Viral Match)", 
+                                    dex_data=dex_data, 
+                                    ca_found=mint, 
+                                    is_pump=True
+                                )
+        except Exception:
+            pass
+
 async def run_single_scan():
     count = 0
+    # 1. Skini nove X objave i ažuriraj viralne ključne riječi
     for account in ACTIVE_PROFILES:
         try:
             feed_url = f"https://rsshub.app/twitter/user/{account}"
             feed = feedparser.parse(feed_url)
             if feed.entries:
                 entry = feed.entries[0]
-                post_id = entry.get('id', entry.link)
+                post_id = feed.get('id', entry.link)
+                
+                # Izvlači potencijalne ključne riječi iz tweeta za viralni cache
+                words = re.findall(r'\b[A-Za-z]{4,}\b', entry.title)
+                for w in words:
+                    if w.upper() not in STOP_WORDS:
+                        VIRAL_KEYWORDS_CACHE.add(w.upper())
+                
                 if post_id not in SEEN_ARTICLES:
                     SEEN_ARTICLES.add(post_id)
                     cas = find_contract_addresses(entry.title)
@@ -185,35 +229,38 @@ async def run_single_scan():
                     count += 1
         except Exception:
             pass
-        await asyncio.sleep(1.0)
+        await asyncio.sleep(0.5)
+
+    # 2. Provjeri nove Pump.fun tokene usklađene s viralnim riječima
+    await scan_pump_fun_trending()
     return count
 
 async def twitter_radar_loop():
-    print(f"🚀 Automatski radar pokrenut: {len(ACTIVE_PROFILES)} profila, prag {CURRENT_THRESHOLD}...")
+    print(f"🚀 Hibridni radar (X + Pump.fun Viral) pokrenut!")
     while True:
         try:
             await run_single_scan()
         except Exception as e:
             print(f"Greska u petlji: {e}")
-        await asyncio.sleep(60)
+        await asyncio.sleep(45)
 
 # --- TELEGRAM KOMANDE ---
 async def cmd_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
         return
-    await update.message.reply_text("🔄 Ručno skeniranje svih profila u tijeku...")
+    await update.message.reply_text("🔄 Skeniram X profile i Pump.fun viralne tokene...")
     found = await run_single_scan()
-    await update.message.reply_text(f"✅ Skeniranje završeno! Pronađeno novih objava: {found}")
+    await update.message.reply_text(f"✅ Skeniranje završeno! Pronađeno novih stavki: {found}")
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
         return
     msg = (
-        f"📊 **STATUS RADARA**\n\n"
-        f"• Aktivnih profila: `{len(ACTIVE_PROFILES)}`\n"
-        f"• Prag score-a: `{CURRENT_THRESHOLD}/100`\n"
-        f"• Spremljenih objava u memoriji: `{len(SEEN_ARTICLES)}`\n"
-        f"• Status: `Online / Vrti u pozadini`"
+        f"📊 **HIBRIDni STATUS RADARA**\n\n"
+        f"• Praćenih X profila: `{len(ACTIVE_PROFILES)}`\n"
+        f"• Aktivnih viralnih ključnih riječi: `{len(VIRAL_KEYWORDS_CACHE)}`\n"
+        f"• Prag X score-a: `{CURRENT_THRESHOLD}/100`\n"
+        f"• Status: `Online / Praćenje lanca aktivno`"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
 
@@ -235,10 +282,9 @@ async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
         return
     profiles_str = ", ".join([f"`@{p}`" for p in ACTIVE_PROFILES])
-    await update.message.reply_text(f"📋 **Pratim sljedeće profile ({len(ACTIVE_PROFILES)}):**\n\n{profiles_str}", parse_mode="Markdown")
+    await update.message.reply_text(f"📋 **Pratim X profile ({len(ACTIVE_PROFILES)}):**\n\n{profiles_str}", parse_mode="Markdown")
 
 async def main():
-    # Pokretanje Telegram aplikacije za komande
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     
     app.add_handler(CommandHandler("scan", cmd_scan))
@@ -250,10 +296,8 @@ async def main():
     await app.start()
     await app.updater.start_polling()
 
-    # Istovremeno pokretanje pozadinske petlje za automatsko skeniranje
     asyncio.create_task(twitter_radar_loop())
 
-    # Drži bot upaljenim
     stop_event = asyncio.Event()
     await stop_event.wait()
 
