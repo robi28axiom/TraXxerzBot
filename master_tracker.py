@@ -163,7 +163,7 @@ def send_telegram_alert(title, link, score, account=None, dex_data=None, ca_foun
     search_encoded = quote(ticker)
     short_desc = title[:90] + "..." if len(title) > 90 else title
     
-    header = "🐦 **[X / TOP 50 - GLAVNI RADAR]**"
+    header = "🐦 **[X / TOP 50 RADAR - 40/100]**"
     
     message = f"{header}\n\n"
     if account:
@@ -244,19 +244,19 @@ async def twitter_radar_task():
                                         break
                             
                             dex_data = await check_dexscreener(ca_found) if ca_found else None
-                            send_telegram_alert(entry.title, entry.link, 70, account=account, dex_data=dex_data, ca_found=ca_found, media_url=media_url)
+                            send_telegram_alert(entry.title, entry.link, 40, account=account, dex_data=dex_data, ca_found=ca_found, media_url=media_url)
                 except Exception:
                     pass
                 
-                await asyncio.sleep(3.0)
+                await asyncio.sleep(2.0)
         except Exception as e:
             print(f"Greska u Twitter petlji: {e}")
         
-        await asyncio.sleep(20)
+        await asyncio.sleep(15)
 
 async def background_radar(application):
     await application.bot.initialize()
-    print("🚀 Sustav pokrenut: Fokus isključivo na Twitter Top 50 u realnom vremenu...")
+    print("🚀 Sustav pokrenut: 50 profila aktivno, prag 40/100...")
     
     asyncio.create_task(twitter_radar_task())
 
