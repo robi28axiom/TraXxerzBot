@@ -3,11 +3,14 @@ import re
 import aiohttp
 import requests
 import feedparser
+from telegram import Bot
 from urllib.parse import quote
 
 # --- KONFIGURACIJA ---
 TELEGRAM_BOT_TOKEN = "8725824554:AAGUsQb3t31UU9QbCbOXAIT3Uzzt5eKDKps"
 TELEGRAM_CHAT_ID = "8980310038"
+
+bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
 # TOP 50 KLJUČNIH PROFILA (X)
 TOP_50_TWITTER = [
@@ -158,7 +161,7 @@ def generate_dynamic_token_idea(title: str):
         ticker = extract_smart_ticker(title)
         return f"{ticker} Meta Token", ticker
 
-def send_telegram_alert(title, link, score, account=None, dex_data=None, ca_found=None, media_url=None):
+async def send_telegram_alert(title, link, score, account=None, dex_data=None, ca_found=None, media_url=None):
     token_name, ticker = generate_dynamic_token_idea(title)
     search_encoded = quote(ticker)
     short_desc = title[:90] + "..." if len(title) > 90 else title
@@ -194,33 +197,19 @@ def send_telegram_alert(title, link, score, account=None, dex_data=None, ca_foun
         ]
     ]
 
-    url_send = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
-        "parse_mode": "Markdown",
-        "reply_markup": {"inline_keyboard": keyboard}
-    }
-    
     try:
         if media_url:
-            photo_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
-            photo_payload = {
-                "chat_id": TELEGRAM_CHAT_ID,
-                "photo": media_url,
-                "caption": message,
-                "parse_mode": "Markdown",
-                "reply_markup": {"inline_keyboard": keyboard}
-            }
-            res = requests.post(photo_url, json=photo_payload, timeout=5)
-            if res.status_code != 200:
-                requests.post(url_send, json=payload, timeout=5)
-        else:
-            requests.post(url_send, json=payload, timeout=5)
+            try:
+                await bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=media_url, caption=message, parse_mode="Markdown", reply_markup={"inline_keyboard": keyboard})
+                return
+            except Exception:
+                pass
+        await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message, parse_mode="Markdown", reply_markup={"inline_keyboard": keyboard})
     except Exception as e:
-        print(f"Greska pri slanju: {e}")
+        print(f"Greska pri slanju na Telegram: {e}")
 
 async def twitter_radar_task():
+    print("🚀 Twitter radar pokrenut: 50 profila aktivno, prag 40/100...")
     while True:
         try:
             for account in TOP_50_TWITTER:
@@ -244,7 +233,7 @@ async def twitter_radar_task():
                                         break
                             
                             dex_data = await check_dexscreener(ca_found) if ca_found else None
-                            send_telegram_alert(entry.title, entry.link, 40, account=account, dex_data=dex_data, ca_found=ca_found, media_url=media_url)
+                            await send_telegram_alert(entry.title, entry.link, 40, account=account, dex_data=dex_data, ca_found=ca_found, media_url=media_url)
                 except Exception:
                     pass
                 
@@ -254,16 +243,8 @@ async def twitter_radar_task():
         
         await asyncio.sleep(15)
 
-async def background_radar(application):
-    await application.bot.initialize()
-    print("🚀 Sustav pokrenut: 50 profila aktivno, prag 40/100...")
-    
-    asyncio.create_task(twitter_radar_task())
-
-def main():
-    from telegram.ext import ApplicationBuilder
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(background_radar).build()
-    app.run_polling()
+async def main():
+    await twitter_radar_task()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
