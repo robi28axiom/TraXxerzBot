@@ -2,7 +2,8 @@ import asyncio
 import re
 import aiohttp
 import feedparser
-from telegram import Bot
+from telegram import Bot, Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from urllib.parse import quote
 
 # --- KONFIGURACIJA ---
@@ -227,7 +228,7 @@ async def run_single_scan():
     return count
 
 async def twitter_radar_loop():
-    print(f"🚀 Hibridni radar (X + Pump.fun Viral) uspješno pokrenut bez konflikta!")
+    print(f"🚀 Hibridni radar pokrenut!")
     while True:
         try:
             await run_single_scan()
@@ -235,9 +236,50 @@ async def twitter_radar_loop():
             print(f"Greska u petlji: {e}")
         await asyncio.sleep(45)
 
+# --- TELEGRAM KOMANDE ---
+async def cmd_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
+        return
+    await update.message.reply_text("🔄 Skeniram X profile i Pump.fun viralne tokene...")
+    found = await run_single_scan()
+    await update.message.reply_text(f"✅ Skeniranje završeno! Pronađeno novih stavki: {found}")
+
+async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
+        return
+    msg = (
+        f"📊 **STATUS RADARA**\n\n"
+        f"• Praćenih X profila: `{len(ACTIVE_PROFILES)}`\n"
+        f"• Aktivnih ključnih riječi: `{len(VIRAL_KEYWORDS_CACHE)}`\n"
+        f"• Prag score-a: `{CURRENT_THRESHOLD}/100`\n"
+        f"• Status: `Online`"
+    )
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
+        return
+    profiles_str = ", ".join([f"`@{p}`" for p in ACTIVE_PROFILES])
+    await update.message.reply_text(f"📋 **Pratim X profile ({len(ACTIVE_PROFILES)}):**\n\n{profiles_str}", parse_mode="Markdown")
+
 async def main():
-    # Pokrećemo čistu pozadinsku petlju bez konflikta s get_updates
-    await twitter_radar_loop()
+    # Inicijalizacija bota za komande preko drop_pending_updates da se izbjegne konflikt
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    
+    app.add_handler(CommandHandler("scan", cmd_scan))
+    app.add_handler(CommandHandler("status", cmd_status))
+    app.add_handler(CommandHandler("list", cmd_list))
+
+    await app.initialize()
+    await app.bot.delete_webhook(drop_pending_updates=True)
+    await app.start()
+    await app.updater.start_polling(drop_pending_updates=True)
+
+    # Pokretanje pozadinskog hibridnog radara
+    asyncio.create_task(twitter_radar_loop())
+
+    stop_event = asyncio.Event()
+    await stop_event.wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
