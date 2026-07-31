@@ -261,7 +261,7 @@ async def background_radar(application):
     
     while True:
         try:
-            # 1. TikTok viralne objave (Prag podignut na 90/100)
+            # 1. TikTok viralne objave (Prag na 100/100)
             for tiktok_url in TIKTOK_RSS_URLS:
                 feed = feedparser.parse(tiktok_url)
                 for entry in feed.entries:
@@ -272,7 +272,7 @@ async def background_radar(application):
                         ca_found = cas[0] if cas else None
                         dex_data = await check_dexscreener(ca_found) if ca_found else None
                         media_url = extract_media_from_entry(entry)
-                        send_telegram_alert(entry.title, entry.link, 90, source_type="TIKTOK", dex_data=dex_data, ca_found=ca_found, media_url=media_url)
+                        send_telegram_alert(entry.title, entry.link, 100, source_type="TIKTOK", dex_data=dex_data, ca_found=ca_found, media_url=media_url)
 
             # 2. Top 400 Twitter profila - Ultra brza petlja
             for account in TOP_400_TWITTER:
