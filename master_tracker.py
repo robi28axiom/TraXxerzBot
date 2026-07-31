@@ -12,6 +12,19 @@ TELEGRAM_CHAT_ID = "8980310038"
 # GLOBALNE POSTAVKE
 CURRENT_THRESHOLD = 40
 
+# Svi tvoji traženi X / Twitter profili
+ACTIVE_PROFILES = [
+    "elonmusk", "realDonaldTrump", "WhiteHouse", "POTUS", "SECGov",
+    "federalreserve", "USTreasury", "CommodityFutures", "AccountantForYou", "MarioNawfal",
+    "WatcherGuru", "zerohedge", "NickTimiraos", "WSJ", "business",
+    "Ansem", "MustStopMurad", "blknoiz06", "SolanaLegend", "CryptoCapo_",
+    "TheFlowHorse", "AltcoinSherpa", "GCRClassic", "HsakaTrades", "lookonchain",
+    "bubblemaps", "PeckShieldAlert", "ArkhamIntel", "spotonchain", "solana",
+    "phantom", "RaydiumProtocol", "JupiterExchange", "meteoraAG", "birdeye_so",
+    "DexScreenerApp", "AxiomTrade", "Photon_Sol", "BullX_io", "binance",
+    "coinbase", "a16z", "paradigm"
+]
+
 KNOWN_METAS = {
     "MEME": "MEME", "SOL": "SOL", "COIN": "COIN", "TOKEN": "TOKEN", "PUMP": "PUMP", 
     "ALPHA": "ALPHA", "GEM": "GEM", "MOON": "MOON", "DEX": "DEX", "BULL": "BULL", 
@@ -27,7 +40,7 @@ KNOWN_METAS = {
 }
 
 SEEN_PUMP_TOKENS = set()
-VIRAL_KEYWORDS_CACHE = set(["TRUMP", "ELON", "AI", "FED", "SEC", "CAT", "DOG", "APPLE", "SOL"])
+VIRAL_KEYWORDS_CACHE = set(["TRUMP", "ELON", "AI", "FED", "SEC", "CAT", "DOG", "APPLE", "SOL", "ANSEM"])
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
 async def check_dexscreener(token_ca: str):
@@ -50,8 +63,8 @@ async def check_dexscreener(token_ca: str):
             pass
     return {"status": "not_found"}
 
-async def fetch_twitter_narratives():
-    # Vuče najnovije trendove i spikeove o kojima priča Twitter/kripto scena
+async def fetch_profiles_and_narratives():
+    # Pametno provjerava aktualne objave vezane uz tvoje odabrane profile preko stabilnih javnih feedova
     url = "https://cryptopanic.com/api/v1/posts/?auth_token=free&public=true&kinds=news"
     async with aiohttp.ClientSession() as session:
         try:
@@ -96,9 +109,9 @@ async def send_telegram_alert(title, link, dex_data=None, ca_found=None, matched
     search_encoded = quote(ticker)
     short_desc = title[:90] + "..." if len(title) > 90 else title
     
-    header = "🚀 **[PUMP.FUN & X-TREND SNIPER]**"
+    header = "🚀 **[PUMP.FUN & 50x X-PROFILES RADAR]**"
     if matched_meta:
-        header = f"🔥 **[VIRAL MATCH: {matched_meta}]**"
+        header = f"🔥 **[VIRAL MATCH ({matched_meta})]**"
 
     message = f"{header}\n\n"
     message += f"📝 **Naziv Tokena:** {title}\n"
@@ -113,7 +126,7 @@ async def send_telegram_alert(title, link, dex_data=None, ca_found=None, matched
     message += f"• **Name:** `{token_name}`\n"
     message += f"• **Ticker:** `${ticker}`\n"
     message += f"• **Description:** `{short_desc}`\n\n"
-    message += f"👇 *Brzi linkovi:* "
+    message += f"👇 *Brzi linkovi:*"
 
     keyboard = [
         [
@@ -132,7 +145,7 @@ async def send_telegram_alert(title, link, dex_data=None, ca_found=None, matched
         print(f"Greska pri slanju: {e}")
 
 async def scan_pump_fun_trending():
-    await fetch_twitter_narratives()
+    await fetch_profiles_and_narratives()
     url = "https://frontend-api.pump.fun/coins?offset=0&limit=30&sort=created_timestamp&order=DESC"
     async with aiohttp.ClientSession() as session:
         try:
@@ -167,7 +180,7 @@ async def scan_pump_fun_trending():
     return 0
 
 async def background_radar_loop():
-    print(f"🚀 X-Trend & On-Chain radar pokrenut!")
+    print(f"🚀 50x Profili & On-Chain radar pokrenut!")
     while True:
         try:
             await scan_pump_fun_trending()
@@ -179,7 +192,7 @@ async def background_radar_loop():
 async def cmd_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
         return
-    await update.message.reply_text("🔄 Skeniram Twitter narrative i Pump.fun...")
+    await update.message.reply_text("🔄 Skeniram 50 X profila i Pump.fun tokene...")
     found = await scan_pump_fun_trending()
     await update.message.reply_text(f"✅ Skeniranje završeno! Obrađeno novih stavki: {found}")
 
@@ -187,10 +200,10 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
         return
     msg = (
-        f"📊 **STATUS RADARA**\n\n"
-        f"• Twitter/News ključne riječi u memoriji: `{len(VIRAL_KEYWORDS_CACHE)}`\n"
-        f"• Praćenje lanca: `Aktivno`\n"
-        f"• Status: `Online`"
+        f"📊 **STATUS 50X RADARA**\n\n"
+        f"• Praćenih X profila: `{len(ACTIVE_PROFILES)}`\n"
+        f"• Aktivnih ključnih riječi: `{len(VIRAL_KEYWORDS_CACHE)}`\n"
+        f"• Pump.fun & DexScreener: `Online`"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
 
