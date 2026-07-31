@@ -160,20 +160,20 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
 
-async def main():
+def main():
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     
     app.add_handler(CommandHandler("scan", cmd_scan))
     app.add_handler(CommandHandler("status", cmd_status))
 
-    # Prisilno gasimo webhooks i brišemo stare repove prije starta
-    await app.bot.delete_webhook(drop_pending_updates=True)
-    
-    # Pokrećemo pozadinsku petlju radara
-    asyncio.create_task(background_radar_loop())
+    # Pokrećemo pozadinski zadatak unutar application post-init hooka da event loop bude ispravan
+    async def post_init(application):
+        asyncio.create_task(background_radar_loop())
 
-    # Pokrećemo polling bez blokiranja glavne petlje
-    await app.run_polling(drop_pending_updates=True)
+    app.post_init = post_init
+
+    # Pokrećemo polling bez ručnog asyncio.run()
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
