@@ -5,6 +5,7 @@ import re
 import aiohttp
 import requests
 import feedparser
+from bs4 import BeautifulSoup
 from urllib.parse import quote
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
@@ -13,7 +14,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 TELEGRAM_BOT_TOKEN = "8725824554:AAGUsQb3t31UU9QbCbOXAIT3Uzzt5eKDKps"
 TELEGRAM_CHAT_ID = "8980310038"
 
-# 1000 FINANCIJSKIH, KRIPTO I MAKRO PROFILA ZA ALPHA RADAR
+# 1000 PROFILA - TWITTER RADAR
 LEGIT_PROFILES = [
     # Makroekonomija, Wall Street & Globalne Financije
     "federalreserve", "ecb", "IMFNews", "WorldBank", "TheEconomist", "WSJ", "business", "Bloomberg", 
@@ -83,7 +84,6 @@ LEGIT_PROFILES = [
     "CarpeNoctom", "Pentosh1_Alt", "CryptoCapo_IO", "SolanaSurge", "DeFi_Mogul", "SolyWhale", "PumpBotAlpha",
     "ApeTerminal", "SeedifyFund", "DaoMaker", "GameFi_News", "Metaverse_Daily", "AI_Coins_Hub", "Agent_Alpha",
     "CryptoGodV", "Trader_Kerr", "Sol_Degens_HQ", "MemeCoin_Daily", "Ape_Colonel", "Whale_Alert", "SmartContracter",
-    # (Automatsko mapiranje i dopuna do točno 1000 accounta s Wall Streeta i vrhunskog kripta)
 ][:1000]
 
 NITTER_INSTANCES = [
@@ -92,33 +92,10 @@ NITTER_INSTANCES = [
     "https://nitter.lucabased.xyz"
 ]
 
-RSS_URLS = [
-    "https://news.google.com/rss/search?q=Federal+Reserve+OR+Interest+Rates+when:1h&hl=en-US&gl=US&ceid=US:en",
-    "https://news.google.com/rss/search?q=Wall+Street+OR+Stock+Market+when:1h&hl=en-US&gl=US&ceid=US:en",
-    "https://news.google.com/rss/search?q=Elon+Musk+when:1h&hl=en-US&gl=US&ceid=US:en",
-    "https://news.google.com/rss/search?q=site:x.com+crypto+when:1h&hl=en-US&gl=US&ceid=US:en",
-    "https://cointelegraph.com/rss",
-    "https://www.coindesk.com/arc/outboundfeeds/rss/",
-    "https://decrypt.co/feed"
-]
-
 TIKTOK_RSS_URLS = [
-    "https://news.google.com/rss/search?q=site:tiktok.com+crypto+solana+when:1h&hl=en-US&gl=US&ceid=US:en",
-    "https://news.google.com/rss/search?q=site:tiktok.com+memecoin+pump.fun+when:1h&hl=en-US&gl=US&ceid=US:en"
+    "https://news.google.com/rss/search?q=site:tiktok.com+viral+trend+when:1h&hl=en-US&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=site:tiktok.com+news+drama+when:1h&hl=en-US&gl=US&ceid=US:en"
 ]
-
-HIGH_PRIO_KEYWORDS = [
-    "died", "arrested", "resigned", "shot", "killed", "launched", 
-    "token", "ca:", "solana", "pump.fun", "sec", "binance", "hack", "exploit", "inflation", "rates"
-]
-
-STANDARD_KEYWORDS = [
-    "trump", "musk", "biden", "doge", "meme", "crypto", "fed", "rates", 
-    "election", "white house", "ceo", "lawsuit", "court", "fbi", "police", "listing", "stocks"
-]
-
-HYPE_KEYWORDS = ["launch", "bullish", "breakout", "ath", "gem", "alpha", "pump", "moon", "fomo", "surge"]
-PANIC_KEYWORDS = ["dump", "crash", "hack", "exploit", "scam", "rug", "dead", "sec", "lawsuit", "panic"]
 
 STOP_WORDS = {
     "THE", "A", "AN", "TO", "IN", "FOR", "OF", "ON", "WITH", "AT", "BY", "FROM", 
@@ -127,8 +104,17 @@ STOP_WORDS = {
 }
 
 KNOWN_METAS = {
-    "MUSK": "MUSK", "ELON": "ELON", "TRUMP": "TRUMP", 
-    "BIDEN": "BIDEN", "DOGE": "DOGE", "VITALIK": "VITALIK", "CZ": "CZ"
+    "MEME": "MEME", "SOL": "SOL", "COIN": "COIN", "TOKEN": "TOKEN", "PUMP": "PUMP", 
+    "ALPHA": "ALPHA", "GEM": "GEM", "MOON": "MOON", "DEX": "DEX", "BULL": "BULL", 
+    "BEAR": "BEAR", "WHALE": "WHALE", "DEGEN": "DEGEN", "APE": "APE", "AIRDROP": "AIRDROP",
+    "CAT": "CAT", "DOG": "DOG", "PEPE": "PEPE", "WIF": "WIF", "BOME": "BOME", 
+    "POPCAT": "POPCAT", "SHIB": "SHIB", "FLOKI": "FLOKI", "FROG": "FROG", "DUCK": "DUCK", 
+    "MONKEY": "MONKEY", "CHICKEN": "CHICKEN", "PIG": "PIG",
+    "WAR": "WAR", "PEACE": "PEACE", "TRUMP": "TRUMP", "BIDEN": "BIDEN", "PUTIN": "PUTIN", 
+    "ZELENSKY": "ZELENSKY", "NATO": "NATO", "FED": "FED", "SEC": "SEC", "CORP": "CORP", 
+    "TAX": "TAX", "DOLLAR": "DOLLAR", "GOLD": "GOLD", "OIL": "OIL", "MONEY": "MONEY",
+    "AI": "AI", "GPT": "GPT", "BOT": "BOT", "CHIP": "CHIP", "APPLE": "APPLE", 
+    "TESLA": "TESLA", "MUSK": "MUSK", "ELON": "ELON", "VITALIK": "VITALIK", "CZ": "CZ"
 }
 
 SEEN_ARTICLES = set()
@@ -158,33 +144,6 @@ async def check_dexscreener(token_ca: str):
             pass
     return {"status": "not_found"}
 
-def calculate_score(title):
-    score = 35
-    title_lower = title.lower()
-    for word in HIGH_PRIO_KEYWORDS:
-        if word in title_lower:
-            score += 20
-    for word in STANDARD_KEYWORDS:
-        if word in title_lower:
-            score += 10
-    if len(title) < 70:
-        score += 10
-    return min(score, 100)
-
-def analyze_sentiment(title):
-    title_lower = title.lower()
-    hype_count = sum(1 for w in HYPE_KEYWORDS if w in title_lower)
-    panic_count = sum(1 for w in PANIC_KEYWORDS if w in title_lower)
-    
-    if panic_count > 0:
-        return "🔴 [PANIKA / OPREZ]", 20
-    elif hype_count >= 2:
-        return "🟢 [JAK RANI HYPE]", 95
-    elif hype_count == 1:
-        return "🟡 [BLAGI RAST]", 80
-    else:
-        return "⚪ [NEUTRALNO]", 40
-
 def extract_smart_ticker(title):
     words = re.findall(r'\b[A-Za-z0-9]+\b', title)
     for word in words:
@@ -197,19 +156,59 @@ def extract_smart_ticker(title):
             return upper_word
     return "MEME"
 
-def send_telegram_alert(title, link, score, source_type="TWITTER", dex_data=None, ca_found=None):
-    ticker = extract_smart_ticker(title)
+def generate_dynamic_token_idea(title: str):
+    title_lower = title.lower()
+    if any(w in title_lower for w in ["war", "conflict", "attack", "military", "army"]):
+        return "WW3 Survivor", "WW3"
+    elif any(w in title_lower for w in ["fed", "inflation", "rates", "interest", "powell", "cpi"]):
+        return "Fed Rate Panic", "PRINTER"
+    elif any(w in title_lower for w in ["sec", "lawsuit", "court", "suing", "charge", "arrest"]):
+        return "SEC Target", "SEC"
+    elif any(w in title_lower for w in ["trump", "biden", "election", "white house", "vote"]):
+        return "White House Drama", "BALLOT"
+    elif any(w in title_lower for w in ["cat", "kitty", "kitten", "meow"]):
+        return "Depressed Cat", "FATCAT"
+    elif any(w in title_lower for w in ["dog", "puppy", "shiba", "bark"]):
+        return "Alpha Doge", "DOGE"
+    elif any(w in title_lower for w in ["frog", "pepe"]):
+        return "Brainrot Frog", "FROG"
+    elif any(w in title_lower for w in ["musk", "tesla", "spacex", "x"]):
+        return "Musk Tweet Glitch", "X"
+    elif any(w in title_lower for w in ["apple", "iphone", "tim cook", "mac"]):
+        return "Apple Event Leak", "APPLE"
+    elif any(w in title_lower for w in ["ai", "openai", "gpt", "robot", "agent"]):
+        return "Rogue AI Agent", "ROBOT"
+    else:
+        ticker = extract_smart_ticker(title)
+        return f"{ticker} Meta Token", ticker
+
+def extract_media_from_entry(entry):
+    if hasattr(entry, 'media_content') and entry.media_content:
+        for media in entry.media_content:
+            url = media.get('url')
+            if url and any(ext in url.lower() for ext in ['.jpg', '.png', '.webp', '.gif', '.mp4']):
+                return url
+    summary = entry.get('summary', '')
+    if summary:
+        soup = BeautifulSoup(summary, 'html.parser')
+        img_tag = soup.find('img')
+        if img_tag and img_tag.get('src'):
+            return img_tag['src']
+    return None
+
+def send_telegram_alert(title, link, score, source_type="TWITTER", account=None, dex_data=None, ca_found=None, media_url=None):
+    token_name, ticker = generate_dynamic_token_idea(title)
     search_encoded = quote(ticker)
     short_desc = title[:90] + "..." if len(title) > 90 else title
     
     if source_type == "TIKTOK":
-        header = "🎵 **[TIKTOK VIRALNI HYPE]**"
-    elif source_type == "TWITTER":
-        header = "🐦 **[X / FINANCE & ALPHA ALARM]**"
+        header = "🎵 **[TIKTOK SVAKA TEMA RADAR]**"
     else:
-        header = "📰 **[MAKRO / FINANCIJSKA VIJEST]**"
+        header = "🐦 **[X / 1000 PROFILA - SVE OBJAVE]**"
     
     message = f"{header}\n\n"
+    if account:
+        message += f"👤 **Izvor:** `@{account}`\n"
     message += f"📝 **Sadržaj:** {title}\n"
     message += f"🔥 **Score:** `{score}/100`\n"
     message += f"🎯 **Ticker:** `${ticker}`\n"
@@ -220,7 +219,7 @@ def send_telegram_alert(title, link, score, source_type="TWITTER", dex_data=None
             message += f"💧 **Likvidnost:** `${dex_data['liquidity']:,.0f}` | 📊 **Volumen:** `${dex_data['volume']:,.0f}`\n"
 
     message += f"\n📋 *Predložak za lansiranje:*\n"
-    message += f"• **Name:** `{ticker} Token`\n"
+    message += f"• **Name:** `{token_name}`\n"
     message += f"• **Ticker:** `${ticker}`\n"
     message += f"• **Description:** `{short_desc}`\n\n"
     message += f"👇 *Brzi linkovi:*"
@@ -236,55 +235,43 @@ def send_telegram_alert(title, link, score, source_type="TWITTER", dex_data=None
         ]
     ]
 
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    url_send = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
         "text": message,
         "parse_mode": "Markdown",
         "reply_markup": {"inline_keyboard": keyboard}
     }
+    
     try:
-        requests.post(url, json=payload, timeout=5)
+        if media_url:
+            photo_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+            photo_payload = {
+                "chat_id": TELEGRAM_CHAT_ID,
+                "photo": media_url,
+                "caption": message,
+                "parse_mode": "Markdown",
+                "reply_markup": {"inline_keyboard": keyboard}
+            }
+            res = requests.post(photo_url, json=photo_payload, timeout=5)
+            if res.status_code != 200:
+                requests.post(url_send, json=payload, timeout=5)
+        else:
+            requests.post(url_send, json=payload, timeout=5)
     except Exception as e:
         print(f"Greska pri slanju: {e}")
 
-def send_sentiment_alert(account, title, link, status, sentiment_score):
-    message = f"🧠 **[1000 PROFILA - MAKRO & KRIPTO RADAR]**\n\n"
-    message += f"👤 **Izvor:** `@{account}`\n"
-    message += f"📝 **Objava:** {title}\n"
-    message += f"📊 **Status:** {status}\n"
-    message += f"🔥 **Sentiment Score:** `{sentiment_score}/100`\n\n"
-
-    keyboard = [
-        [
-            {"text": "📈 DexScreener Pretraga", "url": f"https://dexscreener.com/search?q={quote(account)}"},
-            {"text": "🔗 Izvorni Tvit", "url": link}
-        ]
-    ]
-
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
-        "parse_mode": "Markdown",
-        "reply_markup": {"inline_keyboard": keyboard}
-    }
-    try:
-        requests.post(url, json=payload, timeout=5)
-    except Exception as e:
-        print(f"Greska pri slanju sentimenta: {e}")
-
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🚀 Master Bot sa 1000 financijskih i kripto profila je spreman! Koristi /help.")
+    await update.message.reply_text("🚀 Sve-tematski Twitter & TikTok Radar je spreman! Koristi /help.")
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🟢 Server radi besprijekorno, radari prate makro vijesti, burze, TikTok i svih 1000 profila.")
+    await update.message.reply_text("🟢 Server radi besprijekorno, prate se SVE objave sa svih 1000 profila.")
 
 async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔍 Ručno skeniranje 1000 globalnih izvora u tijeku...")
+    await update.message.reply_text("🔍 Ručno skeniranje svih tema u tijeku.")
 
 async def meta_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🎯 Trenutna meta: Globalne financije, makro, Apple & Hype meta.")
+    await update.message.reply_text("🎯 Trenutna meta: Svaka objava je potencijalni token (Sve teme).")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -298,39 +285,24 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def background_radar(application):
     await application.bot.initialize()
-    print("🚀 Master Bot sa 1000 profila pokrenut...")
+    print("🚀 Sve-tematski Twitter & TikTok Radar pokrenut...")
     
     while True:
         try:
-            # 1. Makro i financijske RSS vijesti
-            for rss_url in RSS_URLS:
-                feed = feedparser.parse(rss_url)
-                for entry in feed.entries:
-                    article_id = entry.get('id', entry.link)
-                    if article_id not in SEEN_ARTICLES:
-                        SEEN_ARTICLES.add(article_id)
-                        score = calculate_score(entry.title)
-                        if score >= 80:
-                            cas = find_contract_addresses(entry.title)
-                            ca_found = cas[0] if cas else None
-                            dex_data = await check_dexscreener(ca_found) if ca_found else None
-                            send_telegram_alert(entry.title, entry.link, score, source_type="NEWS", dex_data=dex_data, ca_found=ca_found)
-
-            # 2. TikTok trendovi
+            # 1. TikTok viralne objave (sve teme)
             for tiktok_url in TIKTOK_RSS_URLS:
                 feed = feedparser.parse(tiktok_url)
                 for entry in feed.entries:
                     t_id = entry.get('id', entry.link)
                     if t_id not in SEEN_ARTICLES:
                         SEEN_ARTICLES.add(t_id)
-                        score = calculate_score(entry.title)
-                        if score >= 70:
-                            cas = find_contract_addresses(entry.title)
-                            ca_found = cas[0] if cas else None
-                            dex_data = await check_dexscreener(ca_found) if ca_found else None
-                            send_telegram_alert(entry.title, entry.link, score, source_type="TIKTOK", dex_data=dex_data, ca_found=ca_found)
+                        cas = find_contract_addresses(entry.title)
+                        ca_found = cas[0] if cas else None
+                        dex_data = await check_dexscreener(ca_found) if ca_found else None
+                        media_url = extract_media_from_entry(entry)
+                        send_telegram_alert(entry.title, entry.link, 70, source_type="TIKTOK", dex_data=dex_data, ca_found=ca_found, media_url=media_url)
 
-            # 3. Svih 1000 financijskih i kripto profila
+            # 2. Svih 1000 Twitter profila - APSOLUTNO SVE OBJAVE
             for account in LEGIT_PROFILES:
                 for instance in NITTER_INSTANCES:
                     try:
@@ -341,15 +313,11 @@ async def background_radar(application):
                             post_id = entry.get('id', entry.link)
                             if post_id not in SEEN_ARTICLES:
                                 SEEN_ARTICLES.add(post_id)
-                                status, sent_score = analyze_sentiment(entry.title)
-                                if sent_score >= 80 or sent_score <= 20:
-                                    cas = find_contract_addresses(entry.title)
-                                    if cas:
-                                        ca_found = cas[0]
-                                        dex_data = await check_dexscreener(ca_found)
-                                        send_telegram_alert(entry.title, entry.link, sent_score, source_type="TWITTER", dex_data=dex_data, ca_found=ca_found)
-                                    else:
-                                        send_sentiment_alert(account, entry.title, entry.link, status, sent_score)
+                                cas = find_contract_addresses(entry.title)
+                                ca_found = cas[0] if cas else None
+                                dex_data = await check_dexscreener(ca_found) if ca_found else None
+                                media_url = extract_media_from_entry(entry)
+                                send_telegram_alert(entry.title, entry.link, 65, source_type="TWITTER", account=account, dex_data=dex_data, ca_found=ca_found, media_url=media_url)
                             break
                     except Exception:
                         continue
