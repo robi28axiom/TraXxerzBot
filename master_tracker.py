@@ -3,7 +3,6 @@ import re
 import aiohttp
 import requests
 import feedparser
-from bs4 import BeautifulSoup
 from urllib.parse import quote
 
 # --- KONFIGURACIJA ---
@@ -74,10 +73,6 @@ TOP_50_TWITTER = [
     "paradigm"          
 ]
 
-TIKTOK_RSS_URLS = [
-    "https://news.google.com/rss/search?q=site:tiktok.com+viral+trend+when:1h&hl=en-US&gl=US&ceid=US:en"
-]
-
 STOP_WORDS = {
     "THE", "A", "AN", "TO", "IN", "FOR", "OF", "ON", "WITH", "AT", "BY", "FROM", 
     "IS", "RE", "OVER", "THIS", "THAT", "WILL", "HAS", "HAVE", "HAD", "US", "USA", 
@@ -99,7 +94,6 @@ KNOWN_METAS = {
 }
 
 SEEN_ARTICLES = set()
-SEEN_TIKTOK_ARTICLES = set()
 
 def find_contract_addresses(text: str):
     solana_pattern = r'\b[1-9A-HJ-NP-Za-km-z]{32,44}pump\b'
@@ -164,27 +158,7 @@ def generate_dynamic_token_idea(title: str):
         ticker = extract_smart_ticker(title)
         return f"{ticker} Meta Token", ticker
 
-def extract_tiktok_stats(summary_text):
-    """Pokušava izvući podatke o pregledima i lajkovima ako postoje u RSS opisu (Google News RSS povremeno sadrži dio teksta s metrikama)"""
-    views = "N/D"
-    likes = "N/D"
-    if not summary_text:
-        return views, likes
-    
-    # Traženje brojeva praćenih ključnim riječima (views, likes, plays)
-    text_lower = summary_text.lower()
-    
-    views_match = re.search(r'([\d\.,]+[kmb]?)\s*(?:views|pregleda|plays)', text_lower)
-    if views_match:
-        views = views_match.group(1).upper()
-        
-    likes_match = re.search(r'([\d\.,]+[kmb]?)\s*(?:likes|lajkova)', text_lower)
-    if likes_match:
-        likes = likes_match.group(1).upper()
-        
-    return views, likes
-
-def send_telegram_alert(title, link, score, source_type="TWITTER", account=None, dex_data=None, ca_found=None, media_url=None):
+def send_telegram_alert(title, link, score, account=None, dex_data=None, ca_found=None, media_url=None):
     token_name, ticker = generate_dynamic_token_idea(title)
     search_encoded = quote(ticker)
     short_desc = title[:90] + "..." if len(title) > 90 else title
@@ -246,70 +220,6 @@ def send_telegram_alert(title, link, score, source_type="TWITTER", account=None,
     except Exception as e:
         print(f"Greska pri slanju: {e}")
 
-def send_tiktok_digest(top_entries_data):
-    if not top_entries_data:
-        return
-    
-    message = "🎵 **[TIKTOK 10-MINUTNI TOP 2 TRENDOVI]**\n\n"
-    for i, item in enumerate(top_entries_data, 1):
-        title = item['title']
-        link = item['link']
-        views = item['views']
-        likes = item['likes']
-        token_name, ticker = generate_dynamic_token_idea(title)
-        
-        message += f"{i}. 📝 {title}\n"
-        message += f"   👁️ **Pregledi:** `{views}` | ❤️ **Lajkovi:** `{likes}`\n"
-        message += f"   🎯 **Ticker:** `${ticker}` | [Izvor]({link})\n\n"
-    
-    message += "👇 *Nove ideje za meme trendove*"
-    
-    url_send = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
-        "parse_mode": "Markdown",
-        "disable_web_page_preview": True
-    }
-    try:
-        requests.post(url_send, json=payload, timeout=5)
-    except Exception as e:
-        print(f"Greska pri slanju TikTok digest-a: {e}")
-
-async def tiktok_radar_task():
-    await asyncio.sleep(5)
-    while True:
-        try:
-            new_entries_data = []
-            for tiktok_url in TIKTOK_RSS_URLS:
-                feed = feedparser.parse(tiktok_url)
-                for entry in feed.entries:
-                    e_id = entry.get('id', entry.link)
-                    if e_id not in SEEN_TIKTOK_ARTICLES:
-                        SEEN_TIKTOK_ARTICLES.add(e_id)
-                        
-                        summary = entry.get('summary', '') + ' ' + entry.get('title', '')
-                        views, likes = extract_tiktok_stats(summary)
-                        
-                        new_entries_data.append({
-                            'title': entry.get('title', 'Nema naslova'),
-                            'link': entry.get('link', '#'),
-                            'views': views,
-                            'likes': likes
-                        })
-                        
-                        if len(new_entries_data) >= 2:
-                            break
-                if len(new_entries_data) >= 2:
-                    break
-            
-            if new_entries_data:
-                send_tiktok_digest(new_entries_data)
-        except Exception as e:
-            print(f"Greska u TikTok radaru: {e}")
-        
-        await asyncio.sleep(600) # 600 sekundi = 10 minuta
-
 async def twitter_radar_task():
     while True:
         try:
@@ -334,11 +244,11 @@ async def twitter_radar_task():
                                         break
                             
                             dex_data = await check_dexscreener(ca_found) if ca_found else None
-                            send_telegram_alert(entry.title, entry.link, 70, source_type="TWITTER", account=account, dex_data=dex_data, ca_found=ca_found, media_url=media_url)
+                            send_telegram_alert(entry.title, entry.link, 70, account=account, dex_data=dex_data, ca_found=ca_found, media_url=media_url)
                 except Exception:
                     pass
                 
-                await asyncio.sleep(3.0)  # Pauza od 3 sekunde između profila
+                await asyncio.sleep(3.0)
         except Exception as e:
             print(f"Greska u Twitter petlji: {e}")
         
@@ -346,10 +256,9 @@ async def twitter_radar_task():
 
 async def background_radar(application):
     await application.bot.initialize()
-    print("🚀 Sustav pokrenut: Twitter vrti Top 50, TikTok šalje Top 2 sa statistikom svakih 10 minuta...")
+    print("🚀 Sustav pokrenut: Fokus isključivo na Twitter Top 50 u realnom vremenu...")
     
     asyncio.create_task(twitter_radar_task())
-    asyncio.create_task(tiktok_radar_task())
 
 def main():
     from telegram.ext import ApplicationBuilder
