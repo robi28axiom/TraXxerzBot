@@ -9,13 +9,9 @@ from urllib.parse import quote
 TELEGRAM_BOT_TOKEN = "8725824554:AAGUsQb3t31UU9QbCbOXAIT3Uzzt5eKDKps"
 TELEGRAM_CHAT_ID = "8980310038"
 
-# GLOBALNE POSTAVKE
-CURRENT_THRESHOLD = 40
-
-# Svi tvoji traženi X / Twitter profili
 ACTIVE_PROFILES = [
     "elonmusk", "realDonaldTrump", "WhiteHouse", "POTUS", "SECGov",
-    "federalreserve", "USTreasury", "CommodityFutures", "AccountantForYou", "MarioNawfal",
+    "federalreserve", "USTreasury", "AccountantForYou", "MarioNawfal",
     "WatcherGuru", "zerohedge", "NickTimiraos", "WSJ", "business",
     "Ansem", "MustStopMurad", "blknoiz06", "SolanaLegend", "CryptoCapo_",
     "TheFlowHorse", "AltcoinSherpa", "GCRClassic", "HsakaTrades", "lookonchain",
@@ -25,205 +21,129 @@ ACTIVE_PROFILES = [
     "coinbase", "a16z", "paradigm"
 ]
 
-# Masivna lista od 100+ ključnih riječi i meta
-VIRAL_KEYWORDS_CACHE = set([
-    # 1. Političari, institucije i geopolitika
-    "TRUMP", "BIDEN", "HARRIS", "VANCE", "PUTIN", "ZELENSKY", "OBAMA", "MACRON", "SCHOLZ", "SUNAK",
-    "FED", "SEC", "TREASURY", "NATO", "BRICS", "IMF", "BLACKROCK", "VANGUARD", "BINANCE", "COINBASE",
-    "SENATE", "HOUSE", "CONGRESS", "ELECTION", "VOTE", "BALLOT", "WAR", "PEACE", "TAX", "TARIFF",
+CRYPTO_HYPE_KEYWORDS = [
+    "sol", "solana", "pump", "token", "coin", "memecoin", "alpha", "gem", "moon", 
+    "dex", "liquidity", "volume", "marketcap", "mc", "bull", "bear", "degen", "ape", 
+    "airdrop", "sniper", "rug", "wallet", "buy", "long", "short", "pnl", "million", 
+    "billion", "sec", "fed", "binance", "coinbase", "raydium", "jupiter", "breaking", 
+    "launch", "listing", "ath", "surge", "spike"
+]
 
-    # 2. Tehnologija, AI i divovi
-    "AI", "GPT", "OPENAI", "CLAUDE", "GEMINI", "ROBOT", "CHIP", "NVIDIA", "APPLE", "IPHONE", 
-    "MACBOOK", "TIMCOOK", "TESLA", "CYBERTRUCK", "NEURALINK", "SPACEX", "MARS", "MICROSOFT", 
-    "GOOGLE", "META", "ZUCK", "AMAZON", "NETFLIX", "DISNEY", "INTEL", "AMD", "TSMC", "QUANTUM",
-
-    # 3. Kripto figure, influenceri i legende
-    "ELON", "MUSK", "VITALIK", "CZ", "SATHOSHI", "ANSEM", "MURAD", "GCR", "HSAKA", "CAPO", 
-    "COBIE", "POW", "POS", "MEV", "JIT", "VALIDATOR", "RPC", "GAS", "BURN", "MINT",
-
-    # 4. Životinje i meme klasici (Zoo meta)
-    "CAT", "FATCAT", "KITTEN", "MEOW", "DOG", "DOGE", "SHIB", "FLOKI", "PUPPY", "PEPE", 
-    "WIF", "BOME", "POPCAT", "FROG", "DUCK", "MONKEY", "CHICKEN", "PIG", "COW", "BULL", 
-    "BEAR", "WHALE", "SHARK", "CRAB", "PENGUIN", "OWL", "RAT", "HAMSTER", "SLOTH", "GOAT", 
-
-    # 5. Solana ekosustav i DEX alati
-    "SOL", "PUMP", "RAY", "JUP", "METEORA", "PHANTOM", "SOLANA", "AXIOM", "PHOTON", "BULLX", 
-    "DEXSCREENER", "BIRDEYE", "BUBBLEMAPS", "ARKHAM", "COINBASE", "BINANCE", "BYBIT", "OKX", 
-
-    # 6. De gen / Trading / Alpha sleng
-    "ALPHA", "GEM", "MOON", "DEX", "DEGEN", "APE", "AIRDROP", "STAKE", "FARM", "YIELD", 
-    "LIQUIDITY", "POOL", "MARKETCAP", "VOLUME", "HODL", "FOMO", "FUD", "REKT", "PUMPANDDUMP", 
-    "SNIPER", "BOT", "RUG", "HONEYPOT", "CHAD", "BOOMER", "ZOOMER", "BAG", "BAGHOLDER", "TENDIES",
-
-    # 7. Makroekonomija i novac
-    "DOLLAR", "EURO", "YEN", "YUAN", "INFLATION", "RATE", "CUT", "HIKE", "GOLD", "SILVER", 
-    "OIL", "GAS", "ENERGY", "STOCKS", "SP500", "NASDAQ", "DOW", "RECESSION", "DEBT", "MONEY"
-])
-
-KNOWN_METAS = {kw: kw for kw in VIRAL_KEYWORDS_CACHE}
-SEEN_PUMP_TOKENS = set()
+SEEN_POSTS = set()
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
-async def check_dexscreener(token_ca: str):
-    url = f"https://api.dexscreener.com/latest/dex/tokens/{token_ca}"
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(url, timeout=10) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    pairs = data.get("pairs", [])
-                    if pairs:
-                        pair = pairs[0]
-                        return {
-                            "status": "found",
-                            "dex": pair.get("dexId", "Nepoznato"),
-                            "liquidity": pair.get("liquidity", {}).get("usd", 0),
-                            "volume": pair.get("volume", {}).get("h24", 0)
-                        }
-        except Exception:
-            pass
-    return {"status": "not_found"}
+def calculate_hype_score(title: str):
+    t_lower = title.lower()
+    score = 30  # Početna baza za svaku objavu
+    
+    matches = 0
+    for kw in CRYPTO_HYPE_KEYWORDS:
+        if kw in t_lower:
+            matches += 1
+            
+    score += matches * 15
+    
+    if "$" in title or "%" in title or "ath" in t_lower or "million" in t_lower:
+        score += 20
+        
+    return min(score, 99)
 
-async def fetch_profiles_and_narratives():
-    url = "https://cryptopanic.com/api/v1/posts/?auth_token=free&public=true&kinds=news"
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(url, timeout=10) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    for item in data.get("results", []):
-                        title = item.get("title", "")
-                        words = re.findall(r'\b[A-Za-z]{4,}\b', title)
-                        for w in words:
-                            w_up = w.upper()
-                            if w_up not in {"THIS", "THAT", "WITH", "FROM", "THEY", "WILL"}:
-                                VIRAL_KEYWORDS_CACHE.add(w_up)
-        except Exception:
-            pass
+async def send_hype_alert(title, link, source_name, hype_score):
+    short_desc = title[:120] + "..." if len(title) > 120 else title
+    search_encoded = quote(title[:30])
 
-def generate_dynamic_token_idea(title: str):
-    t_low = title.lower()
-    if any(w in t_low for w in ["trump", "biden", "election", "white house"]):
-        return "White House Drama", "BALLOT"
-    elif any(w in t_low for w in ["cat", "kitty", "kitten"]):
-        return "Depressed Cat", "FATCAT"
-    elif any(w in t_low for w in ["dog", "puppy", "shiba"]):
-        return "Alpha Doge", "DOGE"
-    elif any(w in t_low for w in ["apple", "iphone", "tim cook"]):
-        return "Apple Event Leak", "APPLE"
-    elif any(w in t_low for w in ["ai", "openai", "gpt", "robot"]):
-        return "Rogue AI Agent", "ROBOT"
+    if hype_score >= 75:
+        hype_emoji = "🔥"
+    elif hype_score >= 50:
+        hype_emoji = "⚡"
     else:
-        words = re.findall(r'\b[A-Za-z0-9]+\b', title)
-        for word in words:
-            if word.upper() in KNOWN_METAS:
-                return f"{KNOWN_METAS[word.upper()]} Meta", KNOWN_METAS[word.upper()]
-        for word in words:
-            w_up = word.upper()
-            if len(w_up) > 2 and not w_up.isdigit():
-                return f"{w_up} Token", w_up
-        return "MEME Token", "MEME"
+        hype_emoji = "💤"
 
-async def send_telegram_alert(title, link, dex_data=None, ca_found=None, matched_meta=None):
-    token_name, ticker = generate_dynamic_token_idea(title)
-    search_encoded = quote(ticker)
-    short_desc = title[:90] + "..." if len(title) > 90 else title
-    
-    header = "🚀 **[PUMP.FUN & 50x X-PROFILES RADAR]**"
-    if matched_meta:
-        header = f"🔥 **[VIRAL MATCH ({matched_meta})]**"
-
-    message = f"{header}\n\n"
-    message += f"📝 **Naziv Tokena:** {title}\n"
-    message += f"🎯 **Ticker:** `${ticker}`\n"
-    
-    if ca_found:
-        message += f"🔑 **CA:** `{ca_found}`\n"
-        if dex_data and dex_data["status"] == "found":
-            message += f"💧 **Likvidnost:** `${dex_data['liquidity']:,.0f}` | 📊 **Volumen:** `${dex_data['volume']:,.0f}`\n"
-
-    message += f"\n📋 *Predložak za lansiranje:*\n"
-    message += f"• **Name:** `{token_name}`\n"
-    message += f"• **Ticker:** `${ticker}`\n"
-    message += f"• **Description:** `{short_desc}`\n\n"
-    message += f"👇 *Brzi linkovi:*"
+    message = f"{hype_emoji} **[X / HYPE RADAR - {hype_score}% HYPE]**\n\n"
+    message += f"👤 **Izvor:** `{source_name}`\n"
+    message += f"💬 **Objava:** {short_desc}\n"
+    message += f"📈 **Crypto/Hype Procjena:** `{hype_score}%`\n\n"
+    message += f"🔗 [Otvori izvor]({link})\n\n"
+    message += f"👇 *Brze akcije za Token/Ape:*"
 
     keyboard = [
         [
-            {"text": f"⚡ Axiom ({ticker})", "url": f"https://axiom.trade/search?q={search_encoded}"},
-            {"text": f"🚀 Pump.fun", "url": f"https://pump.fun/board?search={search_encoded}"}
+            {"text": "⚡ Axiom Search", "url": f"https://axiom.trade/search?q={search_encoded}"},
+            {"text": "🚀 Pump.fun", "url": f"https://pump.fun/board?search={search_encoded}"}
         ],
         [
             {"text": "📈 DexScreener", "url": f"https://dexscreener.com/search?q={search_encoded}"},
-            {"text": "🔗 Pump Token", "url": link}
+            {"text": "🌐 Idi na Objavu", "url": link}
         ]
     ]
 
     try:
-        await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message, parse_mode="Markdown", reply_markup={"inline_keyboard": keyboard})
+        await bot.send_message(
+            chat_id=TELEGRAM_CHAT_ID, 
+            text=message, 
+            parse_mode="Markdown", 
+            reply_markup={"inline_keyboard": keyboard},
+            disable_web_page_preview=True
+        )
     except Exception as e:
         print(f"Greska pri slanju: {e}")
 
-async def scan_pump_fun_trending():
-    await fetch_profiles_and_narratives()
-    url = "https://frontend-api.pump.fun/coins?offset=0&limit=30&sort=created_timestamp&order=DESC"
+async def fetch_live_feed():
+    url = "https://cryptopanic.com/api/v1/posts/?auth_token=free&public=true&kinds=news,media"
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(url, timeout=10) as response:
                 if response.status == 200:
-                    coins = await response.json()
+                    data = await response.json()
                     new_count = 0
-                    for coin in coins:
-                        mint = coin.get("mint")
-                        name = coin.get("name", "")
-                        symbol = coin.get("symbol", "")
-                        
-                        if mint and mint not in SEEN_PUMP_TOKENS:
-                            SEEN_PUMP_TOKENS.add(mint)
-                            
-                            combined_text = f"{name} {symbol}".upper()
-                            matched_meta = next((kw for kw in VIRAL_KEYWORDS_CACHE if kw in combined_text), None)
+                    for item in data.get("results", []):
+                        post_id = str(item.get("id"))
+                        title = item.get("title", "")
+                        source = item.get("source", {}).get("title", "X Alpha Source")
+                        url_link = item.get("url", "https://twitter.com")
 
-                            dex_data = await check_dexscreener(mint)
-                            await send_telegram_alert(
-                                title=f"{name} (${symbol})", 
-                                link=f"https://pump.fun/coin/{mint}", 
-                                dex_data=dex_data, 
-                                ca_found=mint,
-                                matched_meta=matched_meta
-                            )
+                        if post_id and post_id not in SEEN_POSTS:
+                            SEEN_POSTS.add(post_id)
+                            if len(SEEN_POSTS) > 500:
+                                SEEN_POSTS.pop()
+
+                            # Izračunaj hype postotak za svaku objavu bez obzira na sve
+                            hype_score = calculate_hype_score(title)
+
+                            # ŠALJE SVE - nema preskakanja, čak i ako je 30% ili 40% hype-a
+                            await send_hype_alert(title, url_link, source, hype_score)
                             new_count += 1
-                            await asyncio.sleep(0.3)
+                            await asyncio.sleep(0.5)
                     return new_count
         except Exception as e:
-            print(f"Pump API greska: {e}")
+            print(f"Greška: {e}")
     return 0
 
 async def background_radar_loop():
-    print(f"🚀 50x Profili & 100+ Keywords radar pokrenut!")
+    print(f"🚀 All-In Hype Radar pokrenut (Prikazuje apsolutno sve s postocima)!")
     while True:
         try:
-            await scan_pump_fun_trending()
+            await fetch_live_feed()
         except Exception as e:
             print(f"Greska u petlji: {e}")
-        await asyncio.sleep(30)
+        await asyncio.sleep(15)
 
 # --- TELEGRAM KOMANDE ---
 async def cmd_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
         return
-    await update.message.reply_text("🔄 Skeniram X profile, 100+ ključnih riječi i Pump.fun...")
-    found = await scan_pump_fun_trending()
-    await update.message.reply_text(f"✅ Skeniranje završeno! Obrađeno novih stavki: {found}")
+    await update.message.reply_text("🔄 Skeniram apsolutno sve objave i računam postotke...")
+    found = await fetch_live_feed()
+    await update.message.reply_text(f"✅ Skeniranje završeno. Poslano objava: {found}")
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
         return
     msg = (
-        f"📊 **STATUS MASIVNOG RADARA**\n\n"
-        f"• Praćenih X profila: `{len(ACTIVE_PROFILES)}`\n"
-        f"• Aktivnih ključnih riječi: `{len(VIRAL_KEYWORDS_CACHE)}`\n"
-        f"• Pump.fun & DexScreener: `Online`"
+        f"📊 **ALL-IN HYPE STATUS**\n\n"
+        f"• Praćenih profila: `{len(ACTIVE_PROFILES)}`\n"
+        f"• Filteri: `Isključeni (Šalje se 100% objava s postocima)`\n"
+        f"• Spremljenih objava: `{len(SEEN_POSTS)}`"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
 
