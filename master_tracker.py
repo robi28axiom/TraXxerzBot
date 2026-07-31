@@ -261,7 +261,7 @@ async def background_radar(application):
     
     while True:
         try:
-            # 1. TikTok viralne objave
+            # 1. TikTok viralne objave (Prag podignut na 90/100)
             for tiktok_url in TIKTOK_RSS_URLS:
                 feed = feedparser.parse(tiktok_url)
                 for entry in feed.entries:
@@ -272,7 +272,7 @@ async def background_radar(application):
                         ca_found = cas[0] if cas else None
                         dex_data = await check_dexscreener(ca_found) if ca_found else None
                         media_url = extract_media_from_entry(entry)
-                        send_telegram_alert(entry.title, entry.link, 75, source_type="TIKTOK", dex_data=dex_data, ca_found=ca_found, media_url=media_url)
+                        send_telegram_alert(entry.title, entry.link, 90, source_type="TIKTOK", dex_data=dex_data, ca_found=ca_found, media_url=media_url)
 
             # 2. Top 400 Twitter profila - Ultra brza petlja
             for account in TOP_400_TWITTER:
@@ -293,7 +293,7 @@ async def background_radar(application):
                             break
                     except Exception:
                         continue
-                await asyncio.sleep(0.15)  # Još brži interval po profilu za top 400
+                await asyncio.sleep(0.15)
             
         except Exception as e:
             print(f"Greska u glavnoj petlji: {e}")
@@ -301,7 +301,7 @@ async def background_radar(application):
         await asyncio.sleep(5)
 
 def main():
-    from telegram.ext import ApplicationBuilder, CommandHandler
+    from telegram.ext import ApplicationBuilder
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(background_radar).build()
     app.run_polling()
 
