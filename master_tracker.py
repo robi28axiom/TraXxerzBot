@@ -1,5 +1,3 @@
-import os
-import time
 import asyncio
 import re
 import aiohttp
@@ -7,15 +5,13 @@ import requests
 import feedparser
 from bs4 import BeautifulSoup
 from urllib.parse import quote
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 # --- KONFIGURACIJA ---
 TELEGRAM_BOT_TOKEN = "8725824554:AAGUsQb3t31UU9QbCbOXAIT3Uzzt5eKDKps"
 TELEGRAM_CHAT_ID = "8980310038"
 
-# 1000 PROFILA - TWITTER RADAR
-LEGIT_PROFILES = [
+# TOP 400 PROČIŠĆENIH NAJJAČIH TWITTER PROFILA ZA BRZI RADAR
+TOP_400_TWITTER = [
     # Makroekonomija, Wall Street & Globalne Financije
     "federalreserve", "ecb", "IMFNews", "WorldBank", "TheEconomist", "WSJ", "business", "Bloomberg", 
     "FinancialTimes", "Reuters", "CNBC", "YahooFinance", "MarketWatch", "forbes", "FortuneMagazine", 
@@ -59,7 +55,7 @@ LEGIT_PROFILES = [
     "nic__carter", "Gladstein", "BTC_Archive", "natbrunell", "saylor", "ToneVays", "ScottMellker", 
     "CryptoWendyO", "BenjaminCowen", "intocryptoverse", "AltCoinDaily", "LayahHeilpern", "MMCrypto",
 
-    # AI, Tehnologija & Tech OpcE
+    # AI, Tehnologija & Tech Opće
     "OpenAI", "SamAltman", "gregkamradt", "yannlecun", "karpathy", "AnthropicAI", "midjourney", 
     "stabilityai", "satyanadella", "sundarpichai", "tim_cook", "mashable", "ign", "gamespot", 
     "verge", "wired", "engadget", "venturebeat", "techmeme", "producthunt", "github", "stackoverflow", 
@@ -75,16 +71,14 @@ LEGIT_PROFILES = [
     "arbitrum_dev", "optimism_dev", "ethglobal", "hackathons", "gitcoin", "buidlguidl", "ETHDenver", 
     "Permissionless", "Consensus", "Token2049", "Bankless_DAO",
 
-    # Meme Legende, Zajednice & Proširenje do 1000 ključnih igrača
+    # Meme Legende & Zajednice
     "PepeCoinEth", "Dogecoin", "Shibtoken", "Floki", "Myro_Sol", "WifCoin", "BomeSolana", "PopcatSolana", 
     "MeowCoin", "CatInALaptop", "SlerfSol", "HobbesSol", "Wen_Solana", "ManekiSol", "Nodl_Sol", "SharkSol", 
     "GigaChadSol", "ToTheMoonSol", "SolanaMoon", "SolanaRocket", "SolanaGemini", "SolanaAI", "SolanaMatrix", 
     "SolanaNexus", "SolanaPortal", "SolanaNetwork", "SolanaProtocol", "SolanaChain", "SolanaLayer", "SolanaNode",
     "Zeneca", "Pranksy", "BoredApeYC", "yugalabs", "Doodles", "Azuki", "beeple", "SnoopDogg",
-    "CarpeNoctom", "Pentosh1_Alt", "CryptoCapo_IO", "SolanaSurge", "DeFi_Mogul", "SolyWhale", "PumpBotAlpha",
-    "ApeTerminal", "SeedifyFund", "DaoMaker", "GameFi_News", "Metaverse_Daily", "AI_Coins_Hub", "Agent_Alpha",
-    "CryptoGodV", "Trader_Kerr", "Sol_Degens_HQ", "MemeCoin_Daily", "Ape_Colonel", "Whale_Alert", "SmartContracter",
-][:1000]
+    "CarpeNoctom", "Pentosh1_Alt", "CryptoCapo_IO", "SolanaSurge", "DeFi_Mogul", "SolyWhale", "PumpBotAlpha"
+]
 
 NITTER_INSTANCES = [
     "https://nitter.privacydev.net",
@@ -202,9 +196,9 @@ def send_telegram_alert(title, link, score, source_type="TWITTER", account=None,
     short_desc = title[:90] + "..." if len(title) > 90 else title
     
     if source_type == "TIKTOK":
-        header = "🎵 **[TIKTOK SVAKA TEMA RADAR]**"
+        header = "🎵 **[TIKTOK TOP 400 RADAR]**"
     else:
-        header = "🐦 **[X / 1000 PROFILA - SVE OBJAVE]**"
+        header = "🐦 **[X / TOP 400 - BLITZ RADAR]**"
     
     message = f"{header}\n\n"
     if account:
@@ -261,35 +255,13 @@ def send_telegram_alert(title, link, score, source_type="TWITTER", account=None,
     except Exception as e:
         print(f"Greska pri slanju: {e}")
 
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🚀 Sve-tematski Twitter & TikTok Radar je spreman! Koristi /help.")
-
-async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🟢 Server radi besprijekorno, prate se SVE objave sa svih 1000 profila.")
-
-async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔍 Ručno skeniranje svih tema u tijeku.")
-
-async def meta_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🎯 Trenutna meta: Svaka objava je potencijalni token (Sve teme).")
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Dostupne komande:\n\n"
-        "/start - Pokretanje bota\n"
-        "/status - Provjera servera\n"
-        "/scan - Ručno skeniranje\n"
-        "/meta - Trenutni fokus\n"
-        "/help - Pomoć"
-    )
-
 async def background_radar(application):
     await application.bot.initialize()
-    print("🚀 Sve-tematski Twitter & TikTok Radar pokrenut...")
+    print("🚀 Top 400 Blitz Radar pokrenut...")
     
     while True:
         try:
-            # 1. TikTok viralne objave (sve teme)
+            # 1. TikTok viralne objave
             for tiktok_url in TIKTOK_RSS_URLS:
                 feed = feedparser.parse(tiktok_url)
                 for entry in feed.entries:
@@ -300,10 +272,10 @@ async def background_radar(application):
                         ca_found = cas[0] if cas else None
                         dex_data = await check_dexscreener(ca_found) if ca_found else None
                         media_url = extract_media_from_entry(entry)
-                        send_telegram_alert(entry.title, entry.link, 70, source_type="TIKTOK", dex_data=dex_data, ca_found=ca_found, media_url=media_url)
+                        send_telegram_alert(entry.title, entry.link, 75, source_type="TIKTOK", dex_data=dex_data, ca_found=ca_found, media_url=media_url)
 
-            # 2. Svih 1000 Twitter profila - APSOLUTNO SVE OBJAVE
-            for account in LEGIT_PROFILES:
+            # 2. Top 400 Twitter profila - Ultra brza petlja
+            for account in TOP_400_TWITTER:
                 for instance in NITTER_INSTANCES:
                     try:
                         feed_url = f"{instance}/{account}/rss"
@@ -317,29 +289,20 @@ async def background_radar(application):
                                 ca_found = cas[0] if cas else None
                                 dex_data = await check_dexscreener(ca_found) if ca_found else None
                                 media_url = extract_media_from_entry(entry)
-                                send_telegram_alert(entry.title, entry.link, 65, source_type="TWITTER", account=account, dex_data=dex_data, ca_found=ca_found, media_url=media_url)
+                                send_telegram_alert(entry.title, entry.link, 70, source_type="TWITTER", account=account, dex_data=dex_data, ca_found=ca_found, media_url=media_url)
                             break
                     except Exception:
                         continue
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.15)  # Još brži interval po profilu za top 400
             
         except Exception as e:
             print(f"Greska u glavnoj petlji: {e}")
         
-        await asyncio.sleep(10)
-
-async def post_init(application):
-    asyncio.create_task(background_radar(application))
+        await asyncio.sleep(5)
 
 def main():
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
-
-    app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(CommandHandler("status", status_command))
-    app.add_handler(CommandHandler("scan", scan_command))
-    app.add_handler(CommandHandler("meta", meta_command))
-    app.add_handler(CommandHandler("help", help_command))
-
+    from telegram.ext import ApplicationBuilder, CommandHandler
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(background_radar).build()
     app.run_polling()
 
 if __name__ == "__main__":
