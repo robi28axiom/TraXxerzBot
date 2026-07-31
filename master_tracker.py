@@ -2,8 +2,7 @@ import asyncio
 import re
 import aiohttp
 import feedparser
-from telegram import Bot, Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram import Bot
 from urllib.parse import quote
 
 # --- KONFIGURACIJA ---
@@ -80,17 +79,6 @@ async def check_dexscreener(token_ca: str):
             pass
     return {"status": "not_found"}
 
-def extract_smart_ticker(title):
-    words = re.findall(r'\b[A-Za-z0-9]+\b', title)
-    for word in words:
-        if word.upper() in KNOWN_METAS:
-            return KNOWN_METAS[word.upper()]
-    for word in words:
-        w_up = word.upper()
-        if w_up not in STOP_WORDS and len(w_up) > 2 and not w_up.isdigit():
-            return w_up
-    return "MEME"
-
 def generate_dynamic_token_idea(title: str):
     t_low = title.lower()
     if any(w in t_low for w in ["war", "conflict", "attack", "military"]):
@@ -112,8 +100,15 @@ def generate_dynamic_token_idea(title: str):
     elif any(w in t_low for w in ["ai", "openai", "gpt", "robot"]):
         return "Rogue AI Agent", "ROBOT"
     else:
-        ticker = extract_smart_ticker(title)
-        return f"{ticker} Meta Token", ticker
+        words = re.findall(r'\b[A-Za-z0-9]+\b', title)
+        for word in words:
+            if word.upper() in KNOWN_METAS:
+                return f"{KNOWN_METAS[word.upper()]} Meta", KNOWN_METAS[word.upper()]
+        for word in words:
+            w_up = word.upper()
+            if w_up not in STOP_WORDS and len(w_up) > 2 and not w_up.isdigit():
+                return f"{w_up} Token", w_up
+        return "MEME Token", "MEME"
 
 async def send_telegram_alert(title, link, score, account=None, dex_data=None, ca_found=None, media_url=None, is_pump=False):
     token_name, ticker = generate_dynamic_token_idea(title) if not is_pump else (title, link)
@@ -175,7 +170,6 @@ async def scan_pump_fun_trending():
                         symbol = coin.get("symbol", "")
                         
                         if mint and mint not in SEEN_PUMP_TOKENS:
-                            # Provjeri sadrži li token neku od viralnih ključnih riječi dana
                             combined_text = f"{name} {symbol}".upper()
                             matched_keyword = any(kw in combined_text for kw in VIRAL_KEYWORDS_CACHE)
                             
@@ -196,16 +190,14 @@ async def scan_pump_fun_trending():
 
 async def run_single_scan():
     count = 0
-    # 1. Skini nove X objave i ažuriraj viralne ključne riječi
     for account in ACTIVE_PROFILES:
         try:
             feed_url = f"https://rsshub.app/twitter/user/{account}"
             feed = feedparser.parse(feed_url)
             if feed.entries:
                 entry = feed.entries[0]
-                post_id = feed.get('id', entry.link)
+                post_id = entry.get('id', entry.link)
                 
-                # Izvlači potencijalne ključne riječi iz tweeta za viralni cache
                 words = re.findall(r'\b[A-Za-z]{4,}\b', entry.title)
                 for w in words:
                     if w.upper() not in STOP_WORDS:
@@ -231,12 +223,11 @@ async def run_single_scan():
             pass
         await asyncio.sleep(0.5)
 
-    # 2. Provjeri nove Pump.fun tokene usklađene s viralnim riječima
     await scan_pump_fun_trending()
     return count
 
 async def twitter_radar_loop():
-    print(f"🚀 Hibridni radar (X + Pump.fun Viral) pokrenut!")
+    print(f"🚀 Hibridni radar (X + Pump.fun Viral) uspješno pokrenut bez konflikta!")
     while True:
         try:
             await run_single_scan()
@@ -244,62 +235,9 @@ async def twitter_radar_loop():
             print(f"Greska u petlji: {e}")
         await asyncio.sleep(45)
 
-# --- TELEGRAM KOMANDE ---
-async def cmd_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
-        return
-    await update.message.reply_text("🔄 Skeniram X profile i Pump.fun viralne tokene...")
-    found = await run_single_scan()
-    await update.message.reply_text(f"✅ Skeniranje završeno! Pronađeno novih stavki: {found}")
-
-async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
-        return
-    msg = (
-        f"📊 **HIBRIDni STATUS RADARA**\n\n"
-        f"• Praćenih X profila: `{len(ACTIVE_PROFILES)}`\n"
-        f"• Aktivnih viralnih ključnih riječi: `{len(VIRAL_KEYWORDS_CACHE)}`\n"
-        f"• Prag X score-a: `{CURRENT_THRESHOLD}/100`\n"
-        f"• Status: `Online / Praćenje lanca aktivno`"
-    )
-    await update.message.reply_text(msg, parse_mode="Markdown")
-
-async def cmd_threshold(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global CURRENT_THRESHOLD
-    if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
-        return
-    if context.args:
-        try:
-            val = int(context.args[0])
-            CURRENT_THRESHOLD = val
-            await update.message.reply_text(f"✅ Prag uspješno promijenjen na: `{CURRENT_THRESHOLD}`", parse_mode="Markdown")
-        except ValueError:
-            await update.message.reply_text("❌ Molimo unesi valjani broj, npr: `/threshold 50`")
-    else:
-        await update.message.reply_text(f"Trenutni prag je: `{CURRENT_THRESHOLD}`. Promijeni ga s: `/threshold <broj>`", parse_mode="Markdown")
-
-async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
-        return
-    profiles_str = ", ".join([f"`@{p}`" for p in ACTIVE_PROFILES])
-    await update.message.reply_text(f"📋 **Pratim X profile ({len(ACTIVE_PROFILES)}):**\n\n{profiles_str}", parse_mode="Markdown")
-
 async def main():
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-    
-    app.add_handler(CommandHandler("scan", cmd_scan))
-    app.add_handler(CommandHandler("status", cmd_status))
-    app.add_handler(CommandHandler("threshold", cmd_threshold))
-    app.add_handler(CommandHandler("list", cmd_list))
-
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
-
-    asyncio.create_task(twitter_radar_loop())
-
-    stop_event = asyncio.Event()
-    await stop_event.wait()
+    # Pokrećemo čistu pozadinsku petlju bez konflikta s get_updates
+    await twitter_radar_loop()
 
 if __name__ == "__main__":
     asyncio.run(main())
