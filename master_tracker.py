@@ -10,7 +10,7 @@ from urllib.parse import quote
 TELEGRAM_BOT_TOKEN = "8725824554:AAGUsQb3t31UU9QbCbOXAIT3Uzzt5eKDKps"
 TELEGRAM_CHAT_ID = "8980310038"
 
-# TOP 50 KLJUČNIH PROFILA (Elon Musk, Trump, Bijela kuća, Regulative, Sol Alpha & Alati)
+# TOP 50 KLJUČNIH PROFILA (X)
 TOP_50_TWITTER = [
     # --- 1. ELON MUSK, TRUMP & AMERIČKA ADMINISTRACIJA ---
     "elonmusk",         
@@ -99,6 +99,7 @@ KNOWN_METAS = {
 }
 
 SEEN_ARTICLES = set()
+SEEN_TIKTOK_ARTICLES = set()
 
 def find_contract_addresses(text: str):
     solana_pattern = r'\b[1-9A-HJ-NP-Za-km-z]{32,44}pump\b'
@@ -163,29 +164,12 @@ def generate_dynamic_token_idea(title: str):
         ticker = extract_smart_ticker(title)
         return f"{ticker} Meta Token", ticker
 
-def extract_media_from_entry(entry):
-    if hasattr(entry, 'media_content') and entry.media_content:
-        for media in entry.media_content:
-            url = media.get('url')
-            if url and any(ext in url.lower() for ext in ['.jpg', '.png', '.webp', '.gif', '.mp4']):
-                return url
-    summary = entry.get('summary', '')
-    if summary:
-        soup = BeautifulSoup(summary, 'html.parser')
-        img_tag = soup.find('img')
-        if img_tag and img_tag.get('src'):
-            return img_tag['src']
-    return None
-
 def send_telegram_alert(title, link, score, source_type="TWITTER", account=None, dex_data=None, ca_found=None, media_url=None):
     token_name, ticker = generate_dynamic_token_idea(title)
     search_encoded = quote(ticker)
     short_desc = title[:90] + "..." if len(title) > 90 else title
     
-    if source_type == "TIKTOK":
-        header = "🎵 **[TIKTOK ULTRA-SPORI RADAR]**"
-    else:
-        header = "🐦 **[X / TOP 50 - GLAVNI RADAR]**"
+    header = "🐦 **[X / TOP 50 - GLAVNI RADAR]**"
     
     message = f"{header}\n\n"
     if account:
@@ -242,31 +226,58 @@ def send_telegram_alert(title, link, score, source_type="TWITTER", account=None,
     except Exception as e:
         print(f"Greska pri slanju: {e}")
 
-async def background_radar(application):
-    await application.bot.initialize()
-    print("🚀 Optimizirani Top 50 radar (Musk, Trump, WhiteHouse & Sol) uspješno pokrenut...")
+def send_tiktok_digest(top_entries):
+    if not top_entries:
+        return
     
-    tiktok_counter = 0
+    message = "🎵 **[TIKTOK 10-MINUTNI TOP 2 TRENDOVI]**\n\n"
+    for i, entry in enumerate(top_entries, 1):
+        title = entry.get('title', 'Nema naslova')
+        link = entry.get('link', '#')
+        token_name, ticker = generate_dynamic_token_idea(title)
+        message += f"{i}. 📝 {title}\n   🎯 **Ticker:** `${ticker}` | [Izvor]({link})\n\n"
+    
+    message += "👇 *Nove ideje za meme trendove*"
+    
+    url_send = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message,
+        "parse_mode": "Markdown",
+        "disable_web_page_preview": True
+    }
+    try:
+        requests.post(url_send, json=payload, timeout=5)
+    except Exception as e:
+        print(f"Greska pri slanju TikTok digest-a: {e}")
 
+async def tiktok_radar_task():
+    await asyncio.sleep(5)
     while True:
         try:
-            # 1. TikTok provjera (svaki 15. krug)
-            tiktok_counter += 1
-            if tiktok_counter >= 15:
-                tiktok_counter = 0
-                for tiktok_url in TIKTOK_RSS_URLS:
-                    feed = feedparser.parse(tiktok_url)
-                    for entry in feed.entries:
-                        t_id = entry.get('id', entry.link)
-                        if t_id not in SEEN_ARTICLES:
-                            SEEN_ARTICLES.add(t_id)
-                            cas = find_contract_addresses(entry.title)
-                            ca_found = cas[0] if cas else None
-                            dex_data = await check_dexscreener(ca_found) if ca_found else None
-                            media_url = extract_media_from_entry(entry)
-                            send_telegram_alert(entry.title, entry.link, 100, source_type="TIKTOK", dex_data=dex_data, ca_found=ca_found, media_url=media_url)
+            new_entries = []
+            for tiktok_url in TIKTOK_RSS_URLS:
+                feed = feedparser.parse(tiktok_url)
+                for entry in feed.entries:
+                    e_id = entry.get('id', entry.link)
+                    if e_id not in SEEN_TIKTOK_ARTICLES:
+                        SEEN_TIKTOK_ARTICLES.add(e_id)
+                        new_entries.append(entry)
+                        if len(new_entries) >= 2:
+                            break
+                if len(new_entries) >= 2:
+                    break
+            
+            if new_entries:
+                send_tiktok_digest(new_entries)
+        except Exception as e:
+            print(f"Greska u TikTok radaru: {e}")
+        
+        await asyncio.sleep(600) # 600 sekundi = 10 minuta
 
-            # 2. Glavni fokus: Top 50 Twitter profila preko RSSHub-a
+async def twitter_radar_task():
+    while True:
+        try:
             for account in TOP_50_TWITTER:
                 try:
                     feed_url = f"https://rsshub.app/twitter/user/{account}"
@@ -278,18 +289,32 @@ async def background_radar(application):
                             SEEN_ARTICLES.add(post_id)
                             cas = find_contract_addresses(entry.title)
                             ca_found = cas[0] if cas else None
+                            
+                            media_url = None
+                            if hasattr(entry, 'media_content') and entry.media_content:
+                                for media in entry.media_content:
+                                    m_url = media.get('url')
+                                    if m_url and any(ext in m_url.lower() for ext in ['.jpg', '.png', '.webp', '.gif', '.mp4']):
+                                        media_url = m_url
+                                        break
+                            
                             dex_data = await check_dexscreener(ca_found) if ca_found else None
-                            media_url = extract_media_from_entry(entry)
                             send_telegram_alert(entry.title, entry.link, 70, source_type="TWITTER", account=account, dex_data=dex_data, ca_found=ca_found, media_url=media_url)
                 except Exception:
                     pass
                 
                 await asyncio.sleep(3.0)  # Pauza od 3 sekunde između profila
-            
         except Exception as e:
-            print(f"Greska u glavnoj petlji: {e}")
+            print(f"Greska u Twitter petlji: {e}")
         
         await asyncio.sleep(20)
+
+async def background_radar(application):
+    await application.bot.initialize()
+    print("🚀 Sustav pokrenut: Twitter vrti Top 50, TikTok šalje Top 2 svакih 10 minuta...")
+    
+    asyncio.create_task(twitter_radar_task())
+    asyncio.create_task(tiktok_radar_task())
 
 def main():
     from telegram.ext import ApplicationBuilder
