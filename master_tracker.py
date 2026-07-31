@@ -25,22 +25,43 @@ ACTIVE_PROFILES = [
     "coinbase", "a16z", "paradigm"
 ]
 
-KNOWN_METAS = {
-    "MEME": "MEME", "SOL": "SOL", "COIN": "COIN", "TOKEN": "TOKEN", "PUMP": "PUMP", 
-    "ALPHA": "ALPHA", "GEM": "GEM", "MOON": "MOON", "DEX": "DEX", "BULL": "BULL", 
-    "BEAR": "BEAR", "WHALE": "WHALE", "DEGEN": "DEGEN", "APE": "APE", "AIRDROP": "AIRDROP",
-    "CAT": "CAT", "DOG": "DOG", "PEPE": "PEPE", "WIF": "WIF", "BOME": "BOME", 
-    "POPCAT": "POPCAT", "SHIB": "SHIB", "FLOKI": "FLOKI", "FROG": "FROG", "DUCK": "DUCK", 
-    "MONKEY": "MONKEY", "CHICKEN": "CHICKEN", "PIG": "PIG",
-    "WAR": "WAR", "PEACE": "PEACE", "TRUMP": "TRUMP", "BIDEN": "BIDEN", "PUTIN": "PUTIN", 
-    "ZELENSKY": "ZELENSKY", "NATO": "NATO", "FED": "FED", "SEC": "SEC", "CORP": "CORP", 
-    "TAX": "TAX", "DOLLAR": "DOLLAR", "GOLD": "GOLD", "OIL": "OIL", "MONEY": "MONEY",
-    "AI": "AI", "GPT": "GPT", "BOT": "BOT", "CHIP": "CHIP", "APPLE": "APPLE", 
-    "TESLA": "TESLA", "MUSK": "MUSK", "ELON": "ELON", "VITALIK": "VITALIK", "CZ": "CZ"
-}
+# Masivna lista od 100+ ključnih riječi i meta
+VIRAL_KEYWORDS_CACHE = set([
+    # 1. Političari, institucije i geopolitika
+    "TRUMP", "BIDEN", "HARRIS", "VANCE", "PUTIN", "ZELENSKY", "OBAMA", "MACRON", "SCHOLZ", "SUNAK",
+    "FED", "SEC", "TREASURY", "NATO", "BRICS", "IMF", "BLACKROCK", "VANGUARD", "BINANCE", "COINBASE",
+    "SENATE", "HOUSE", "CONGRESS", "ELECTION", "VOTE", "BALLOT", "WAR", "PEACE", "TAX", "TARIFF",
 
+    # 2. Tehnologija, AI i divovi
+    "AI", "GPT", "OPENAI", "CLAUDE", "GEMINI", "ROBOT", "CHIP", "NVIDIA", "APPLE", "IPHONE", 
+    "MACBOOK", "TIMCOOK", "TESLA", "CYBERTRUCK", "NEURALINK", "SPACEX", "MARS", "MICROSOFT", 
+    "GOOGLE", "META", "ZUCK", "AMAZON", "NETFLIX", "DISNEY", "INTEL", "AMD", "TSMC", "QUANTUM",
+
+    # 3. Kripto figure, influenceri i legende
+    "ELON", "MUSK", "VITALIK", "CZ", "SATHOSHI", "ANSEM", "MURAD", "GCR", "HSAKA", "CAPO", 
+    "COBIE", "POW", "POS", "MEV", "JIT", "VALIDATOR", "RPC", "GAS", "BURN", "MINT",
+
+    # 4. Životinje i meme klasici (Zoo meta)
+    "CAT", "FATCAT", "KITTEN", "MEOW", "DOG", "DOGE", "SHIB", "FLOKI", "PUPPY", "PEPE", 
+    "WIF", "BOME", "POPCAT", "FROG", "DUCK", "MONKEY", "CHICKEN", "PIG", "COW", "BULL", 
+    "BEAR", "WHALE", "SHARK", "CRAB", "PENGUIN", "OWL", "RAT", "HAMSTER", "SLOTH", "GOAT", 
+
+    # 5. Solana ekosustav i DEX alati
+    "SOL", "PUMP", "RAY", "JUP", "METEORA", "PHANTOM", "SOLANA", "AXIOM", "PHOTON", "BULLX", 
+    "DEXSCREENER", "BIRDEYE", "BUBBLEMAPS", "ARKHAM", "COINBASE", "BINANCE", "BYBIT", "OKX", 
+
+    # 6. De gen / Trading / Alpha sleng
+    "ALPHA", "GEM", "MOON", "DEX", "DEGEN", "APE", "AIRDROP", "STAKE", "FARM", "YIELD", 
+    "LIQUIDITY", "POOL", "MARKETCAP", "VOLUME", "HODL", "FOMO", "FUD", "REKT", "PUMPANDDUMP", 
+    "SNIPER", "BOT", "RUG", "HONEYPOT", "CHAD", "BOOMER", "ZOOMER", "BAG", "BAGHOLDER", "TENDIES",
+
+    # 7. Makroekonomija i novac
+    "DOLLAR", "EURO", "YEN", "YUAN", "INFLATION", "RATE", "CUT", "HIKE", "GOLD", "SILVER", 
+    "OIL", "GAS", "ENERGY", "STOCKS", "SP500", "NASDAQ", "DOW", "RECESSION", "DEBT", "MONEY"
+])
+
+KNOWN_METAS = {kw: kw for kw in VIRAL_KEYWORDS_CACHE}
 SEEN_PUMP_TOKENS = set()
-VIRAL_KEYWORDS_CACHE = set(["TRUMP", "ELON", "AI", "FED", "SEC", "CAT", "DOG", "APPLE", "SOL", "ANSEM"])
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
 async def check_dexscreener(token_ca: str):
@@ -64,7 +85,6 @@ async def check_dexscreener(token_ca: str):
     return {"status": "not_found"}
 
 async def fetch_profiles_and_narratives():
-    # Pametno provjerava aktualne objave vezane uz tvoje odabrane profile preko stabilnih javnih feedova
     url = "https://cryptopanic.com/api/v1/posts/?auth_token=free&public=true&kinds=news"
     async with aiohttp.ClientSession() as session:
         try:
@@ -180,7 +200,7 @@ async def scan_pump_fun_trending():
     return 0
 
 async def background_radar_loop():
-    print(f"🚀 50x Profili & On-Chain radar pokrenut!")
+    print(f"🚀 50x Profili & 100+ Keywords radar pokrenut!")
     while True:
         try:
             await scan_pump_fun_trending()
@@ -192,7 +212,7 @@ async def background_radar_loop():
 async def cmd_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
         return
-    await update.message.reply_text("🔄 Skeniram 50 X profila i Pump.fun tokene...")
+    await update.message.reply_text("🔄 Skeniram X profile, 100+ ključnih riječi i Pump.fun...")
     found = await scan_pump_fun_trending()
     await update.message.reply_text(f"✅ Skeniranje završeno! Obrađeno novih stavki: {found}")
 
@@ -200,7 +220,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
         return
     msg = (
-        f"📊 **STATUS 50X RADARA**\n\n"
+        f"📊 **STATUS MASIVNOG RADARA**\n\n"
         f"• Praćenih X profila: `{len(ACTIVE_PROFILES)}`\n"
         f"• Aktivnih ključnih riječi: `{len(VIRAL_KEYWORDS_CACHE)}`\n"
         f"• Pump.fun & DexScreener: `Online`"
