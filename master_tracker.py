@@ -10,80 +10,68 @@ from urllib.parse import quote
 TELEGRAM_BOT_TOKEN = "8725824554:AAGUsQb3t31UU9QbCbOXAIT3Uzzt5eKDKps"
 TELEGRAM_CHAT_ID = "8980310038"
 
-# TOP 400 PROČIŠĆENIH NAJJAČIH TWITTER PROFILA ZA RADAR
-TOP_400_TWITTER = [
-    # Makroekonomija, Wall Street & Globalne Financije
-    "federalreserve", "ecb", "IMFNews", "WorldBank", "TheEconomist", "WSJ", "business", "Bloomberg", 
-    "FinancialTimes", "Reuters", "CNBC", "YahooFinance", "MarketWatch", "forbes", "FortuneMagazine", 
-    "zerohedge", "NickTimiraos", "elerianm", "RayDalio", "CathieWood", "PeterSchiff", "NourielRoubini", 
-    "profplum99", "LynAldenContact", "michaelxpilon", "INArtefact", "biancoresearch", "jordanbpeterson", 
-    "ScottGalloway", "chamath", "DavidSacks", "Jason", "paulg", "sama", "elonmusk", "BillAckman", 
-    "Carl_C_Icahn", "WarrenBuffett", "MacroAlf", "SantiagoAuilar", "KraljFinancija", "FinanzInformer",
+# TOP 50 KLJUČNIH PROFILA (Elon Musk, Trump, Bijela kuća, Regulative, Sol Alpha & Alati)
+TOP_50_TWITTER = [
+    # --- 1. ELON MUSK, TRUMP & AMERIČKA ADMINISTRACIJA ---
+    "elonmusk",         
+    "realDonaldTrump",  
+    "WhiteHouse",       
+    "POTUS",            
+    "SecTreasury",      
+    "StateDept",        
+    "US_FDA",           
+    "PentagonPresSec",  
 
-    # VC, Institucije & Osnivači (Global & Web3)
-    "a16z", "paradigm", "sequoia", "foundersfund", "PanteraCapital", "multicoincap", "Delphi_Digital", 
-    "MessariCrypto", "Crypto_Com", "krakenfx", "coinbase", "binance", "okx", "bybit", "kucoin", 
-    "brian_armstrong", "cz_binance", "SBF_FTX", "jespow", "APompliano", "novogratz", "RaoulGMI", 
-    "RaoulPal", "Arthur_Hayes", "zhusu", "KyleSamani", "arrington_xrp", "cdixon", "pmarca", 
-    "balajis", "vitalikbuterin", "aeyakovenko", "rajgokal", "Ansem", "blknoiz06", "MustStopMurad",
+    # --- 2. REGULATORI I EKONOMSKA POLITIKA ---
+    "SECGov",           
+    "federalreserve",   
+    "USTreasury",       
+    "CommodityFutures", 
 
-    # Solana Core, Projekti & DeFi Ekosustav
-    "solana", "solanaconf", "solanafdn", "phantom", "solflare_wallet", "SuperteamDAO", "RaydiumProtocol", 
-    "JupiterExchange", "meteoraAG", "birdeye_so", "tensor_hq", "DRIFTProtocol", "Jito_Sol", "PhoenixTrade", 
-    "SanctumSo", "KaminoFinance", "Orca_so", "Marginfi", "SolanaLegend", "CryptoCapo_", "rekt_news", 
-    "DefiIgnas", "0xCygaar", "MuroCrypto", "DaanCrypto", "CryptoMichNL", "CryptoDonAlt", "George1Giga", 
-    "GiganticRebirth", "inversebrah", "TheFlowHorse", "KomiTrades", "CredAvail", "ColdBloodShill", 
-    "TheCryptoDog", "CryptoGodJohn", "Ragnar_NFT", "Sol_Devs", "solana_devs", "SolanaDailyNews", 
-    "SolanaInsider", "Solana_Space", "SolanaAlpha", "SolanaGems", "SolanaTrading", "SolanaCalls", 
-    "SolanaHedge", "SolanaWhales", "SolanaHub", "SolanaTracker", "SolanaScanner", "SolanaSniper", 
-    "SolanaBots", "SolanaApe", "SolanaDegens", "SolanaMoonshots", "SolanaPump", "PumpFunGems", 
-    "PumpFunAlpha", "PumpFunCalls", "PumpFunWhales", "Jupiter_Perp", "Meteora_DLMM", "BNSOL_Hub",
+    # --- 3. KLJUČNI AMERIČKI NOVINARI & INSAJDERI ---
+    "AccountantForYou", 
+    "MarioNawfal",      
+    "WatcherGuru",      
+    "zerohedge",        
+    "NickTimiraos",     
+    "WSJ",              
+    "business",         
 
-    # On-Chain Sleuthevi, Analitičari & Sigurnost
-    "lookonchain", "bubblemaps", "PeckShieldAlert", "WhaleChart", "WuBlockchain", "tier10k", 
-    "EmberCN", "SolanaFloor", "ArkhamIntel", "ChainArgos", "DeFiLlama", "TokenUnlocks", "Dune", 
-    "CertiK", "SlowMist_Team", "TheDataNerd", "spotonchain", "nansen_ai", "glassnode", "Token_Terminal", 
-    "DefiLlama_News", "Solana_Daily", "SolanaNews", "SolanaUniverse", "SolanaMemes", "Solana_Ecosystem", 
-    "SolanaSpotted", "WatcherGuru", "ForbesCrypto", "BloombergCrypto", "DecryptMedia", "Protos", "TheBlock_",
+    # --- 4. SOLANA MEME, DEGEN & ALPHA TRADERS ---
+    "Ansem",            
+    "MustStopMurad",    
+    "blknoiz06",        
+    "SolanaLegend",     
+    "CryptoCapo_",      
+    "TheFlowHorse",     
+    "AltcoinSherpa",    
+    "GCRClassic",       
+    "HsakaTrades",      
 
-    # Alpha Traders, Whales & Degens (Global)
-    "MachoMeme", "GCRClassic", "Santiagoroel", "HsakaTrades", "RewotM", "cryptocred", "InverseBiased", 
-    "Pentosh1", "cobie", "frankdegods", "trader1sz", "CryptoCobain", "CryptoKaleo", "AltcoinSherpa", 
-    "CredibleCrypto", "ByzGeneral", "IncomeSharks", "Rager", "MacnBTC", "loomdart", "QwQiao", 
-    "punk6529", "lopp", "MarioNawfal", "PopBase", "Dexerto", "pubity", "DailyLoud", "BanklessHQ", 
-    "Unchained_pod", "Blockworks_", "Defi_Dad", "cc15calc", "Darrenlautf", "DocumentingBTC", "MartyBent", 
-    "nic__carter", "Gladstein", "BTC_Archive", "natbrunell", "saylor", "ToneVays", "ScottMellker", 
-    "CryptoWendyO", "BenjaminCowen", "intocryptoverse", "AltCoinDaily", "LayahHeilpern", "MMCrypto",
+    # --- 5. ON-CHAIN SLEUTHEVI & WHALES ---
+    "lookonchain",      
+    "bubblemaps",       
+    "PeckShieldAlert",  
+    "ArkhamIntel",      
+    "spotonchain",      
 
-    # AI, Tehnologija & Tech Opće
-    "OpenAI", "SamAltman", "gregkamradt", "yannlecun", "karpathy", "AnthropicAI", "midjourney", 
-    "stabilityai", "satyanadella", "sundarpichai", "tim_cook", "mashable", "ign", "gamespot", 
-    "verge", "wired", "engadget", "venturebeat", "techmeme", "producthunt", "github", "stackoverflow", 
-    "hacker__news", "Reddit_Crypto",
+    # --- 6. SOLANA CORE & INFRASTRUKTURA ---
+    "solana",           
+    "phantom",          
+    "RaydiumProtocol",  
+    "JupiterExchange",  
+    "meteoraAG",        
+    "birdeye_so",       
 
-    # Burze, DEX-evi & Alati
-    "DexScreenerApp", "AxiomTrade", "Photon_Sol", "BullX_io", "TrojanOnSolana", "MaestroBots", "BonkBot", 
-    "uniswap", "sushiswap", "pancakeswap", "curvefinance", "balancer", "aavecrypto", "compoundfinance", 
-    "synthetix_io", "makerdao", "sky_ecosystem", "lidofinance", "eigenlayer", "celestiaorg", 
-    "avalancheavax", "arbitrum", "optimism", "polygon", "sui_network", "aptos", "nearprotocol", 
-    "cosmos", "injective", "sei_network", "monad_xyz", "berachain", "blast_l2", "base", "zksync", 
-    "starknet", "scroll_zkp", "lineabuild", "mantle_official", "taiko_xyz", "boba_network", "metis_l2", 
-    "arbitrum_dev", "optimism_dev", "ethglobal", "hackathons", "gitcoin", "buidlguidl", "ETHDenver", 
-    "Permissionless", "Consensus", "Token2049", "Bankless_DAO",
-
-    # Meme Legende & Zajednice
-    "PepeCoinEth", "Dogecoin", "Shibtoken", "Floki", "Myro_Sol", "WifCoin", "BomeSolana", "PopcatSolana", 
-    "MeowCoin", "CatInALaptop", "SlerfSol", "HobbesSol", "Wen_Solana", "ManekiSol", "Nodl_Sol", "SharkSol", 
-    "GigaChadSol", "ToTheMoonSol", "SolanaMoon", "SolanaRocket", "SolanaGemini", "SolanaAI", "SolanaMatrix", 
-    "SolanaNexus", "SolanaPortal", "SolanaNetwork", "SolanaProtocol", "SolanaChain", "SolanaLayer", "SolanaNode",
-    "Zeneca", "Pranksy", "BoredApeYC", "yugalabs", "Doodles", "Azuki", "beeple", "SnoopDogg",
-    "CarpeNoctom", "Pentosh1_Alt", "CryptoCapo_IO", "SolanaSurge", "DeFi_Mogul", "SolyWhale", "PumpBotAlpha"
-]
-
-NITTER_INSTANCES = [
-    "https://nitter.privacydev.net",
-    "https://nitter.poast.org",
-    "https://nitter.lucabased.xyz"
+    # --- 7. TRADING ALATI & BURZE ---
+    "DexScreenerApp",   
+    "AxiomTrade",       
+    "Photon_Sol",       
+    "BullX_io",         
+    "binance",          
+    "coinbase",         
+    "a16z",             
+    "paradigm"          
 ]
 
 TIKTOK_RSS_URLS = [
@@ -197,7 +185,7 @@ def send_telegram_alert(title, link, score, source_type="TWITTER", account=None,
     if source_type == "TIKTOK":
         header = "🎵 **[TIKTOK ULTRA-SPORI RADAR]**"
     else:
-        header = "🐦 **[X / TOP 400 - GLAVNI RADAR]**"
+        header = "🐦 **[X / TOP 50 - GLAVNI RADAR]**"
     
     message = f"{header}\n\n"
     if account:
@@ -256,15 +244,15 @@ def send_telegram_alert(title, link, score, source_type="TWITTER", account=None,
 
 async def background_radar(application):
     await application.bot.initialize()
-    print("🚀 Twitter-fokusirani radar uspješno pokrenut...")
+    print("🚀 Optimizirani Top 50 radar (Musk, Trump, WhiteHouse & Sol) uspješno pokrenut...")
     
     tiktok_counter = 0
 
     while True:
         try:
-            # 1. TikTok provjera radi se izrazito rijetko (tek svaki 10. krug petlje) i isključivo uz prag 100/100
+            # 1. TikTok provjera (svaki 15. krug)
             tiktok_counter += 1
-            if tiktok_counter >= 10:
+            if tiktok_counter >= 15:
                 tiktok_counter = 0
                 for tiktok_url in TIKTOK_RSS_URLS:
                     feed = feedparser.parse(tiktok_url)
@@ -278,31 +266,30 @@ async def background_radar(application):
                             media_url = extract_media_from_entry(entry)
                             send_telegram_alert(entry.title, entry.link, 100, source_type="TIKTOK", dex_data=dex_data, ca_found=ca_found, media_url=media_url)
 
-            # 2. Glavni fokus: Top 400 Twitter profila s optimalnim tempom
-            for account in TOP_400_TWITTER:
-                for instance in NITTER_INSTANCES:
-                    try:
-                        feed_url = f"{instance}/{account}/rss"
-                        feed = feedparser.parse(feed_url)
-                        if feed.entries:
-                            entry = feed.entries[0]
-                            post_id = entry.get('id', entry.link)
-                            if post_id not in SEEN_ARTICLES:
-                                SEEN_ARTICLES.add(post_id)
-                                cas = find_contract_addresses(entry.title)
-                                ca_found = cas[0] if cas else None
-                                dex_data = await check_dexscreener(ca_found) if ca_found else None
-                                media_url = extract_media_from_entry(entry)
-                                send_telegram_alert(entry.title, entry.link, 70, source_type="TWITTER", account=account, dex_data=dex_data, ca_found=ca_found, media_url=media_url)
-                            break
-                    except Exception:
-                        continue
-                await asyncio.sleep(2.0)  # Uravnotežena pauza po profilu za stabilan rad Twitter radara
+            # 2. Glavni fokus: Top 50 Twitter profila preko RSSHub-a
+            for account in TOP_50_TWITTER:
+                try:
+                    feed_url = f"https://rsshub.app/twitter/user/{account}"
+                    feed = feedparser.parse(feed_url)
+                    if feed.entries:
+                        entry = feed.entries[0]
+                        post_id = entry.get('id', entry.link)
+                        if post_id not in SEEN_ARTICLES:
+                            SEEN_ARTICLES.add(post_id)
+                            cas = find_contract_addresses(entry.title)
+                            ca_found = cas[0] if cas else None
+                            dex_data = await check_dexscreener(ca_found) if ca_found else None
+                            media_url = extract_media_from_entry(entry)
+                            send_telegram_alert(entry.title, entry.link, 70, source_type="TWITTER", account=account, dex_data=dex_data, ca_found=ca_found, media_url=media_url)
+                except Exception:
+                    pass
+                
+                await asyncio.sleep(3.0)  # Pauza od 3 sekunde između profila
             
         except Exception as e:
             print(f"Greska u glavnoj petlji: {e}")
         
-        await asyncio.sleep(30)
+        await asyncio.sleep(20)
 
 def main():
     from telegram.ext import ApplicationBuilder
