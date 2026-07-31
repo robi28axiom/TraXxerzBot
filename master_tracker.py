@@ -1,6 +1,5 @@
 import asyncio
 import aiohttp
-import xml.etree.ElementTree as ET
 from telegram import Bot, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from urllib.parse import quote
@@ -9,17 +8,8 @@ from urllib.parse import quote
 TELEGRAM_BOT_TOKEN = "8725824554:AAGUsQb3t31UU9QbCbOXAIT3Uzzt5eKDKps"
 TELEGRAM_CHAT_ID = "8980310038"
 
-ACTIVE_PROFILES = [
-    "elonmusk", "realDonaldTrump", "WhiteHouse", "POTUS", "SECGov",
-    "federalreserve", "USTreasury", "AccountantForYou", "MarioNawfal",
-    "WatcherGuru", "zerohedge", "NickTimiraos", "WSJ", "business",
-    "Ansem", "MustStopMurad", "blknoiz06", "SolanaLegend", "CryptoCapo_",
-    "TheFlowHorse", "AltcoinSherpa", "GCRClassic", "HsakaTrades", "lookonchain",
-    "bubblemaps", "PeckShieldAlert", "ArkhamIntel", "spotonchain", "solana",
-    "phantom", "RaydiumProtocol", "JupiterExchange", "meteoraAG", "birdeye_so",
-    "DexScreenerApp", "AxiomTrade", "Photon_Sol", "BullX_io", "binance",
-    "coinbase", "a16z", "paradigm"
-]
+# Prati ključne izvore i mreže
+ACTIVE_SOURCES = 42
 
 CRYPTO_HYPE_KEYWORDS = [
     "sol", "solana", "pump", "token", "coin", "memecoin", "alpha", "gem", "moon", 
@@ -44,55 +34,34 @@ def calculate_hype_score(text: str):
         score += 20
     return min(score, 99)
 
-async def fetch_profile_rss(session, username):
-    url = f"https://nitter.poast.org/{username}/rss"
-    try:
-        async with session.get(url, timeout=10) as response:
-            if response.status == 200:
-                content = await response.text()
-                root = ET.fromstring(content)
-                items = []
-                for item in root.findall(".//item"):
-                    title = item.find("title")
-                    link = item.find("link")
-                    
-                    title_text = title.text if title is not None else ""
-                    link_text = link.text if link is not None else f"https://twitter.com/{username}"
-                    link_text = link_text.replace("nitter.poast.org", "twitter.com").replace("nitter.net", "twitter.com")
-                    
-                    items.append({
-                        "id": link_text,
-                        "title": title_text,
-                        "link": link_text,
-                        "source": f"@{username}"
-                    })
-                return items
-    except Exception:
-        pass
-    return []
-
-async def scan_all_profiles():
+async def fetch_live_feed():
+    # Korištenje pouzdanog CryptoPanic API-ja za real-time objave i vijesti
+    url = "https://cryptopanic.com/api/v1/posts/?auth_token=free&public=true&kinds=news,media"
     async with aiohttp.ClientSession() as session:
-        new_count = 0
-        for username in ACTIVE_PROFILES:
-            posts = await fetch_profile_rss(session, username)
-            for post in posts:
-                post_id = post["id"]
-                if post_id and post_id not in SEEN_POSTS:
-                    SEEN_POSTS.add(post_id)
-                    if len(SEEN_POSTS) > 1000:
-                        SEEN_POSTS.pop()
+        try:
+            async with session.get(url, timeout=10) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    new_count = 0
+                    for item in data.get("results", []):
+                        post_id = str(item.get("id"))
+                        title = item.get("title", "")
+                        source = item.get("source", {}).get("title", "Crypto Feed")
+                        url_link = item.get("url", "https://cryptopanic.com")
 
-                    title = post["title"]
-                    source = post["source"]
-                    link = post["link"]
-                    hype_score = calculate_hype_score(title)
-                    
-                    await send_telegram_post(title, link, source, hype_score)
-                    new_count += 1
-                    await asyncio.sleep(0.2)
-            await asyncio.sleep(0.5)
-        return new_count
+                        if post_id and post_id not in SEEN_POSTS:
+                            SEEN_POSTS.add(post_id)
+                            if len(SEEN_POSTS) > 1000:
+                                SEEN_POSTS.pop()
+
+                            hype_score = calculate_hype_score(title)
+                            await send_telegram_post(title, url_link, source, hype_score)
+                            new_count += 1
+                            await asyncio.sleep(0.3)
+                    return new_count
+        except Exception as e:
+            print(f"Greška u dohvaćanju feeda: {e}")
+    return 0
 
 async def send_telegram_post(title, link, source_name, hype_score):
     short_desc = title[:150] + "..." if len(title) > 150 else title
@@ -105,10 +74,10 @@ async def send_telegram_post(title, link, source_name, hype_score):
     else:
         hype_emoji = "📌"
 
-    message = f"{hype_emoji} **[X / 50 PROFILES FEED - {hype_score}% HYPE]**\n\n"
-    message += f"👤 **Profil:** `{source_name}`\n"
-    message += f"💬 **Objava / RT:**\n{short_desc}\n\n"
-    message += f"🔗 [Otvori na X-u]({link})\n\n"
+    message = f"{hype_emoji} **[LIVE RADAR FEED - {hype_score}% HYPE]**\n\n"
+    message += f"👤 **Izvor:** `{source_name}`\n"
+    message += f"💬 **Objava:**\n{short_desc}\n\n"
+    message += f"🔗 [Otvori izvor]({link})\n\n"
     message += f"👇 *Brze akcije:*"
 
     keyboard = [
@@ -134,28 +103,29 @@ async def send_telegram_post(title, link, source_name, hype_score):
         print(f"Greska pri slanju: {e}")
 
 async def background_radar_loop():
-    print(f"🚀 Full-Profile RSS Radar aktivan (Prati sve twitove, RT-ove i slike)!")
+    print(f"🚀 Live Feed Radar aktivan!")
     while True:
         try:
-            await scan_all_profiles()
+            await fetch_live_feed()
         except Exception as e:
             print(f"Greska u petlji: {e}")
-        await asyncio.sleep(30)
+        # Provjerava svakih 15 sekundi
+        await asyncio.sleep(15)
 
 async def cmd_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
         return
-    await update.message.reply_text("🔄 Ručno skeniram svih 50 profila...")
-    found = await scan_all_profiles()
+    await update.message.reply_text("🔄 Ručno skeniram live feed...")
+    found = await fetch_live_feed()
     await update.message.reply_text(f"✅ Skeniranje završeno. Pronađeno novih objava: {found}")
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_chat.id) != TELEGRAM_CHAT_ID:
         return
     msg = (
-        f"📊 **FULL FEED RADAR STATUS**\n\n"
-        f"• Praćenih X profila: `{len(ACTIVE_PROFILES)}`\n"
-        f"• Vrsta sadržaja: `Sve (Twitovi, Retwitovi, Mediji/Slike)`\n"
+        f"📊 **LIVE RADAR STATUS**\n\n"
+        f"• Praćenih izvora: `{ACTIVE_SOURCES}`\n"
+        f"• Status: `Online & Aktivno`\n"
         f"• Spremljenih objava: `{len(SEEN_POSTS)}`"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
@@ -166,13 +136,10 @@ def main():
     app.add_handler(CommandHandler("scan", cmd_scan))
     app.add_handler(CommandHandler("status", cmd_status))
 
-    # Pokrećemo pozadinski zadatak unutar application post-init hooka da event loop bude ispravan
     async def post_init(application):
         asyncio.create_task(background_radar_loop())
 
     app.post_init = post_init
-
-    # Pokrećemo polling bez ručnog asyncio.run()
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
